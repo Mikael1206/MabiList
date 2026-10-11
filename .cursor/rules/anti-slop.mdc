@@ -1,0 +1,43 @@
+---
+description: Stop generic AI UI, hallucinated code, and insecure defaults on every build task
+alwaysApply: true
+---
+
+# Anti-Slop (always on)
+
+Read `docs/anti-slop-guardrails.md` before writing UI, copy, or application code. Do not mark
+any `handoff/TASK-###.md` `done` until §6 Delivery Gate passes and the evidence is written into
+that packet's Verify result.
+
+## Hard Gate — never do these
+
+- No fabricated stats, testimonials, avatars, or "trusted by" logos.
+- No dead controls. Every button, link, and form does something real, or it does not ship.
+- No links to pages that do not exist yet.
+- Every changed screen has empty, loading, and error states.
+- Text meets WCAG AA contrast; interactive elements are keyboard-reachable with a visible focus ring.
+- No invented compliance, performance, or security claims.
+- Never invent a library function, parameter, or return type. Confirm it against the installed version.
+- Never report a task done from attempt alone. Run the verify command.
+- No secrets in frontend code or client-exposed env vars (`NEXT_PUBLIC_`, `VITE_`, `REACT_APP_`).
+- Authenticate, then separately check resource ownership. Those are two checks.
+- Never concatenate user input into a SQL query.
+- No unsanitized `innerHTML` / `dangerouslySetInnerHTML` / `v-html`.
+- Passwords only with bcrypt, Argon2, or scrypt.
+
+## Purpose-Gate
+
+Do not use a blue-purple gradient, glassmorphism, generic "AI" icons, or the
+hero → 3 cards → logo bar → 3-tier pricing skeleton unless you can state a one-line product
+reason. If swapping the logo would make this look like any other hackathon app, rework it.
+
+## Invariants (reserved)
+
+- INV-AS-001 auth
+- INV-AS-002 secrets
+- INV-AS-003 injection
+- INV-AS-004 claims
+- INV-AS-005 dead controls
+
+If a rule here conflicts with `docs/design-brief.md`, log the decision in
+`docs/decision-ledger.md` before proceeding. Do not silently override either file.

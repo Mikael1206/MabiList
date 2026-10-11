@@ -1,1 +1,0 @@
-# Philippine-StartUp-Challenge
