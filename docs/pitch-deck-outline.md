@@ -119,3 +119,4 @@ for the Regional Competition, if shortlisted, once the prototype exists.*
 |---|---|
 | 2026-10-07 | Initial outline for the PSC XI NCR application deck |
 | 2026-10-08 | Two ways in the MVP (ADR-012): slides 1, 4, 7–11, 14, 15; word rule; elevator script; four judge questions; demo flow |
+| 2026-10-11 | Built the 24-slide application PDF from the concept note at the founder's request: `pitch-deck/deck.html` → `pitch-deck/The Followers of Ultron_PresentationDeck_PSC11.pdf` (`cd pitch-deck && node render.mjs`) |
