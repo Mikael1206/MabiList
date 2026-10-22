@@ -30,10 +30,15 @@ error state.
 | `app/(app)/orders/[id]` | Draft → "Check the entry"; confirmed → "Order detail" |
 | `app/(app)/orders/[id]/edit` | Edit a confirmed order |
 | `lib/types.ts` | Frontend view of the HTTP contract in `../docs/sdd.md` §2 |
+| `app/(app)/totals` | Totals (still owed, sales, chart, counts, top items, due soon) |
+| `app/(app)/settings/*` | Settings, shop name, account email, privacy and data, sign out |
+| `lib/stats.ts` | Totals maths, mirroring the SDD statistics function |
+| `lib/updates.ts` | Field-by-field changes an order-update draft proposes |
+| `lib/types.ts` | Shapes from `sdd.md` §4 — change the SDD first |
 | `lib/api/` | `index.ts` is the one mock/real switch; `mock.ts` is the stand-in |
 | `../backend/` | Independent server workspace; no source imports across the boundary |
 
 ## Not built yet
 
-Totals, Settings (incl. sign out), connected accounts, order-update matching (F-005), and the chat
-excerpt panel on "Check the entry". See `../handoff/TASK-021.md`.
+Connected accounts (waits for the real backend, F-006), Install MabiList, System states, Preview
+first-run, and "Delete my logbook". See `../handoff/TASK-021.md` and `../handoff/TASK-022.md`.

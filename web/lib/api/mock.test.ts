@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  applyUpdate,
   confirmOrder,
+  deleteOrder,
   createExtraction as createExtractionSlow,
   createManualOrder as createManualOrderSlow,
   discardDraft,
   listOrders as listOrdersSlow,
   resetMock,
 } from "./mock";
+import { proposedChanges } from "../updates";
 
 // The mock waits like a real network call; fake timers skip the waiting.
 const fast =
@@ -83,5 +86,21 @@ describe("mock API", () => {
       payment_status: "unpaid",
     });
     await expect(fast(discardDraft)(manual.id)).rejects.toBeInstanceOf(ApiError);
+    await fast(deleteOrder)(manual.id);
+    expect((await listOrders()).some((o) => o.id === manual.id)).toBe(false);
+  });
+
+  it("applies only the approved changes and deletes the update draft (INV-006)", async () => {
+    const all = await listOrders();
+    const draft = all.find((o) => o.matches_order_id)!;
+    const target = all.find((o) => o.id === draft.matches_order_id)!;
+    const changes = proposedChanges(draft, target);
+    const quantity = changes.find((c) => c.field === "quantity")!;
+
+    const updated = await fast(applyUpdate)(draft.id, target.id, [quantity]);
+    expect(updated.items[0].quantity).toBe(draft.items[0].quantity);
+    expect(updated.payment_status).toBe(target.payment_status); // not approved, so unchanged
+    expect(updated.changes).toHaveLength(1);
+    expect((await listOrders()).some((o) => o.id === draft.id)).toBe(false);
   });
 });
