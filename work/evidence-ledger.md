@@ -11,7 +11,17 @@
 > scoring below. If you searched and found nothing, write `unknown — not found` rather than
 > skipping the row.
 
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-23
+
+## TASK-001 synthetic extraction spike
+
+The 30 invented Taglish chat fixtures and labeled fields are in `backend/eval/fixtures.mjs`.
+The local scorer checks six field groups, including unknown values, and provider request timing.
+**No Gemini or Cloudflare result has been measured yet:** this environment has no provider
+credentials. The accuracy percentages, provider choice, and full upload-to-draft timing remain
+`unknown`. Run `cd backend && npm run eval:fixtures && npm run eval` with both credentials,
+then record the measured output, date, model IDs, and any limitations here. These synthetic
+fixtures are test material, not evidence about actual sellers or real-chat accuracy.
 
 ## Evidence log
 

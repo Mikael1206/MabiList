@@ -32,3 +32,26 @@ Before connecting the apps, establish same-origin `/api` routing to this service
 session layer can forward a verified access token to the backend; the browser-facing cookie and
 refresh flow are still integration work. Hosting also remains open after ADR-014. Never put a
 service key in `web/` or rely on an owner ID sent by the browser.
+
+## TASK-001 accuracy spike
+
+`src/extract-orders.mjs` has server-side Gemini and Cloudflare Workers AI adapters. The
+`eval/` folder contains 30 **invented** Taglish conversations and their expected order fields.
+`npm run eval:fixtures` renders them as PNG chat screenshots (requires ImageMagick's `magick`
+command). Open a few images in `eval/generated/` to inspect them. That directory is ignored by
+Git and can be regenerated from the committed fixtures.
+
+Set `GEMINI_API_KEY`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_AUTH_TOKEN` **only in the
+backend process environment**, then run `npm run eval`. Both candidate models process the same
+30 images. The command prints overall accuracy, key-field accuracy, guessed-value count,
+invalid/failed replies, and median/slowest provider response time. It writes per-case details
+to ignored `eval/generated/results.json` and exits nonzero below 70% overall, below 80% key,
+or on provider failures. Do not put any real customer chat in these fixtures or Gemini's free
+tier. The Cloudflare account owner must first accept the model's Meta license by sending the
+documented one-time `{"prompt":"agree"}` request. Do not automate that acceptance without
+their approval.
+
+The timing is **one provider extraction request**, not the full upload-to-draft path; TC-009's
+end-to-end timing still needs the extraction route. The runner is an evaluation spike and does
+not write to Supabase or choose a production provider automatically. Record actual results in
+`work/evidence-ledger.md` and make the ADR-008 choice only after both runs.
