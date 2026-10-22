@@ -20,11 +20,17 @@ inputs for the designer — states, copy rules, data — not layouts, colors, or
 *Ask the founder. Do not guess. Default is `unanswered`. If they say "not yet," stop: do not
 draft screens, pick a component-library look, or generate a layout to unblock the build.*
 
-- **Status:** founder-owned — prototype shared by the founder on 2026-10-23 (ADR-013).
-- **Source:** An-joe's Figma Make prototype; preserve the supplied visual design.
-- **Link or path:** https://www.figma.com/make/ekR2zUP2Glr5Gl7z0I1Wal/Prototype-MabiList-PWA
-- **Screens it covers:** sign-in, logbook, capture, draft review, totals, settings, connected
-  accounts, privacy/data, first-run and system-state previews. Prototype integrations are simulated.
+- **Status:** founder-owned — design file and prototype shared 2026-10-22/23 (ADR-013, ADR-015).
+- **Visual source (follow for every screen):** An-joe's static Figma design file —
+  https://www.figma.com/design/2QHsLrO5ElGW2RpWUBjQ96/Mabilist (Page 1, 39 mobile frames: sign-in,
+  sign-up, logbook, add order and its states, check the entry, order detail, totals, settings,
+  connected accounts, privacy). Layout, copy, colours, type and spacing come from here.
+- **Flow reference (how screens connect):** An-joe's Figma Make prototype —
+  https://www.figma.com/make/ekR2zUP2Glr5Gl7z0I1Wal/Prototype-MabiList-PWA. Use it for which
+  screens exist and the order a seller moves through them; do not copy its visuals. Its
+  integrations are simulated.
+- **When they disagree:** the design file wins on looks and copy; a flow step with no design-file
+  frame goes to An-joe before it is built (ADR-015).
 
 **Accepted behavior adjustments (ADR-013):** retain nullable item unit prices; keep Not stated /
 Unpaid / Paid; show unknown-payment counts separately from amount owed; provide temporary source
