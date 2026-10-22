@@ -10,6 +10,8 @@ export function BottomNav() {
   const path = usePathname();
   const onLogbook = path.startsWith("/logbook") || path.startsWith("/orders");
   const onAdd = path.startsWith("/add");
+  const onTotals = path.startsWith("/totals");
+  const onSettings = path.startsWith("/settings");
 
   return (
     <nav
@@ -25,15 +27,14 @@ export function BottomNav() {
         <Image src="/icons/nav-add.svg" alt="" width={22} height={22} />
         Add order
       </Link>
-      {/* Totals and Settings have designs but aren't built yet; shown, not clickable (INV-AS-005). */}
-      <span aria-disabled="true" title="Coming in a later build" className={`${ITEM} text-muted opacity-50`}>
-        <Image src="/icons/nav-totals.svg" alt="" width={22} height={22} />
+      <Link href="/totals" aria-current={onTotals ? "page" : undefined} className={`${ITEM} ${onTotals ? "text-ink" : "text-muted"}`}>
+        <Image src={onTotals ? "/icons/nav-totals-active.svg" : "/icons/nav-totals.svg"} alt="" width={22} height={22} />
         Totals
-      </span>
-      <span aria-disabled="true" title="Coming in a later build" className={`${ITEM} text-muted opacity-50`}>
-        <Image src="/icons/nav-settings.svg" alt="" width={22} height={22} />
+      </Link>
+      <Link href="/settings" aria-current={onSettings ? "page" : undefined} className={`${ITEM} ${onSettings ? "text-ink" : "text-muted"}`}>
+        <Image src={onSettings ? "/icons/nav-settings-active.svg" : "/icons/nav-settings.svg"} alt="" width={22} height={22} />
         Settings
-      </span>
+      </Link>
     </nav>
   );
 }
