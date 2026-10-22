@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
@@ -20,6 +20,21 @@ export async function readScreenshot(path) {
   const text = stdout.replace(/^\s*Synthetic order chat\s*/i, '').trim();
   if (!text) throw new Error('OCR returned no chat text');
   return text;
+}
+
+export async function readScreenshotBytes(bytes) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+tgl']);
+    let output = '';
+    let errors = '';
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { output += chunk; if (output.length > 1024 * 1024) child.kill(); });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk) => { errors += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => code === 0 ? resolve(output.trim()) : reject(new Error(`OCR exited ${code}: ${errors.slice(0, 100)}`)));
+    child.stdin.end(bytes);
+  });
 }
 
 const normalize = (text) => text.normalize('NFKC').toLocaleLowerCase()
