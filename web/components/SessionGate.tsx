@@ -22,7 +22,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   if (!session) return null;
 
   return (
-    <SessionContext.Provider value={session}>
+    <SessionContext.Provider value={{ session, setSession }}>
       <div className="mx-auto min-h-dvh max-w-[480px] pb-[94px]">{children}</div>
       <BottomNav />
     </SessionContext.Provider>

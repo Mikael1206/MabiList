@@ -5,12 +5,17 @@
 // shortcut: orders live in module memory and reset on a full reload; fine until the real routes land.
 
 import { addDays, todayManila } from "../format";
+import { computeStats } from "../stats";
 import type {
+  ChatLine,
   ExtractionInput,
   ExtractionResult,
   Order,
+  OrderChange,
   OrderInput,
+  ProposedChange,
   Session,
+  Stats,
   Upload,
 } from "../types";
 
@@ -55,15 +60,18 @@ function makeOrder(input: OrderInput, extra: Partial<Order>): Order {
   };
 }
 
+const daysAgoIso = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
 function seed(): Order[] {
   const t = todayManila();
   const confirmed = (
     name: string,
     item: string,
     qty: number,
-    total: number,
+    total: number | null,
     inDays: number,
     paid: boolean,
+    confirmedDaysAgo: number,
     delivered = false,
   ) =>
     makeOrder(
@@ -74,17 +82,36 @@ function seed(): Order[] {
         delivery_date: addDays(t, inDays),
         payment_status: paid ? "paid" : "unpaid",
       },
-      { source: "screenshot", delivery_status: delivered ? "delivered" : "pending" },
+      {
+        source: "screenshot",
+        delivery_status: delivered ? "delivered" : "pending",
+        confirmed_at: daysAgoIso(confirmedDaysAgo),
+      },
     );
   const expires = new Date(Date.now() + 5 * 86_400_000).toISOString();
+  const joanna = confirmed("Joanna Reyes", "Ube halaya jar", 3, 660, 2, false, 1);
+  const carlaA = confirmed("Carla Mendoza", "Leche flan", 1, 350, 3, true, 2);
+  const carlaB = confirmed("Carla Mendoza", "Ube halaya jar", 1, 220, 4, false, 1);
+  const draft = (input: OrderInput, extra: Partial<Order>) =>
+    makeOrder(input, {
+      source: "screenshot",
+      state: "draft",
+      confirmed_at: null,
+      expires_at: expires,
+      ...extra,
+    });
+
   return [
-    confirmed("Rico dela Cruz", "Leche flan", 1, 350, 0, false),
-    confirmed("Bea Santos", "Ube pandesal box", 2, 560, 1, true),
-    confirmed("Joanna Reyes", "Ube halaya jar", 3, 660, 2, true),
-    confirmed("Mark Villanueva", "Brownie box", 2, 600, 3, false),
-    confirmed("Paolo Garcia", "Ube pandesal box", 4, 1120, 5, false),
-    confirmed("Ana Cruz", "Leche flan", 2, 700, -1, true, true),
-    makeOrder(
+    confirmed("Rico dela Cruz", "Leche flan", 1, 350, 0, false, 0),
+    confirmed("Bea Santos", "Ube pandesal box", 2, 560, 1, true, 3),
+    joanna,
+    confirmed("Mark Villanueva", "Brownie box", 2, 600, 3, false, 0),
+    carlaA,
+    carlaB,
+    confirmed("Paolo Garcia", "Ube pandesal box", 4, 1120, 5, false, 2),
+    confirmed("Liza Tan", "Brownie box", 1, null, 6, false, 1),
+    confirmed("Ana Cruz", "Leche flan", 2, 700, -1, true, 4, true),
+    draft(
       {
         customer_name: "Lyn Ramos",
         items: [{ name: "Brownie box", quantity: 2 }],
@@ -93,11 +120,43 @@ function seed(): Order[] {
         payment_status: "not_stated",
       },
       {
-        source: "screenshot",
-        state: "draft",
-        confirmed_at: null,
         not_in_chat: ["total_php", "payment_status"],
-        expires_at: expires,
+        chat_excerpt: [
+          { from_customer: true, text: "Hi! Lyn here, pwede 2 brownie box bukas?", highlights: ["Lyn", "2 brownie box", "bukas"] },
+        ],
+      },
+    ),
+    draft(
+      {
+        customer_name: "Joanna Reyes",
+        items: [{ name: "Ube halaya jar", quantity: 2 }],
+        total_php: null,
+        delivery_date: null,
+        payment_status: "paid",
+      },
+      {
+        matches_order_id: joanna.id,
+        not_in_chat: ["total_php", "delivery_date"],
+        chat_excerpt: [
+          { from_customer: true, text: "Make it 2 jars na lang po", highlights: ["2 jars"] },
+          { from_customer: true, text: "Paid na po, sent via GCash", highlights: ["Paid na po"] },
+        ],
+      },
+    ),
+    draft(
+      {
+        customer_name: "Carla Mendoza",
+        items: [{ name: "Ube halaya jar", quantity: 2 }],
+        total_php: null,
+        delivery_date: null,
+        payment_status: "not_stated",
+      },
+      {
+        match_candidates: [carlaA.id, carlaB.id],
+        not_in_chat: ["total_php", "delivery_date", "payment_status"],
+        chat_excerpt: [
+          { from_customer: true, text: "Gawin na lang pong 2 yung ube halaya", highlights: ["2", "ube halaya"] },
+        ],
       },
     ),
   ];
@@ -244,8 +303,28 @@ function makeUpload(kind: Upload["kind"], status: Upload["status"], reason: stri
   } satisfies Upload;
 }
 
-function draftFrom(upload: Upload, input: OrderInput, notInChat: Order["not_in_chat"]): Order {
+const SAMPLE_CHAT: ChatLine[] = [
+  { from_customer: true, text: "Pwede po ba 2 brownies, sa Wed po sana. Magkano po?", highlights: ["2 brownies", "sa Wed po sana"] },
+  { from_customer: true, text: "Paid na po, send ko na GCash", highlights: ["Paid na po"] },
+];
+
+/** Mock reading: highlights "number + word" phrases, the way a quantity is usually written. */
+function excerptOf(input: ExtractionInput): ChatLine[] {
+  if (input.kind === "image") return SAMPLE_CHAT;
+  return input.text
+    .split(/\n+/)
+    .filter((line) => line.trim())
+    .map((text) => ({ from_customer: true, text, highlights: text.match(/\d+\s+\p{L}+/gu) ?? [] }));
+}
+
+function draftFrom(
+  upload: Upload,
+  input: OrderInput,
+  notInChat: Order["not_in_chat"],
+  excerpt: ChatLine[],
+): Order {
   return makeOrder(input, {
+    chat_excerpt: excerpt,
     source: upload.kind === "image" ? "screenshot" : "paste",
     upload_id: upload.id,
     state: "draft",
@@ -284,6 +363,7 @@ export async function createExtraction(
         payment_status: "paid",
       },
       ["customer_name", "total_php"],
+      excerptOf(input),
     ),
   ];
   if (simulate === "several") {
@@ -298,11 +378,72 @@ export async function createExtraction(
           payment_status: "not_stated",
         },
         ["customer_name", "total_php", "delivery_date", "payment_status"],
+        excerptOf(input),
       ),
     );
   }
   orders = [...orders, ...drafts];
   return { status: "draft_ready", upload, drafts };
+}
+
+// --- TASK-022 additions. Each one is [not in sdd.md] or extends it; see handoff/TASK-022.md. ---
+
+/** DELETE /api/orders/{id}, extended to confirmed orders (sdd.md §2 allows drafts only). */
+export async function deleteOrder(orderId: string): Promise<void> {
+  await wait(250);
+  findOrder(orderId);
+  orders = orders.filter((o) => o.id !== orderId);
+}
+
+/**
+ * POST /api/orders/{draftId}/apply-to/{targetId}: copies only the approved changes onto the target,
+ * records them under "Changes from chat", then deletes the draft and its chat (INV-001, INV-006).
+ */
+export async function applyUpdate(draftId: string, targetId: string, approved: ProposedChange[]): Promise<Order> {
+  await wait(300);
+  const draft = findOrder(draftId);
+  const target = findOrder(targetId);
+  if (draft.state !== "draft" || target.state !== "confirmed") {
+    throw new ApiError("That update can’t be applied any more. Check the logbook.");
+  }
+  const quote = draft.chat_excerpt?.find((l) => l.from_customer)?.text ?? "From chat";
+  const next: Order = { ...target, items: target.items.map((i) => ({ ...i })), updated_at: nowIso() };
+  for (const change of approved) {
+    if (change.field === "quantity" && next.items[0]) next.items[0].quantity = draft.items[0].quantity;
+    if (change.field === "items" && next.items[0]) next.items[0].name = draft.items[0].name;
+    if (change.field === "total_php") next.total_php = draft.total_php;
+    if (change.field === "delivery_date") next.delivery_date = draft.delivery_date;
+    if (change.field === "payment_status") next.payment_status = draft.payment_status;
+  }
+  const log: OrderChange[] = approved.map((c) => ({ quote, field: c.field, before: c.before, after: c.after }));
+  next.changes = [...(target.changes ?? []), ...log];
+  orders = orders.filter((o) => o.id !== draftId).map((o) => (o.id === targetId ? next : o));
+  return next;
+}
+
+/** The statistics function from sdd.md §4. */
+export async function getStats(): Promise<Stats> {
+  await wait(250);
+  return computeStats(orders);
+}
+
+export async function updateShopName(shopName: string): Promise<Session> {
+  await wait(250);
+  const current = readSession();
+  if (!current) throw new ApiError("You’re signed out. Sign in again to save changes.");
+  const next = { ...current, shop_name: shopName };
+  writeSession(next);
+  return next;
+}
+
+export async function updateEmail(email: string): Promise<Session> {
+  await wait(250);
+  const current = readSession();
+  if (!current) throw new ApiError("You’re signed out. Sign in again to save changes.");
+  if (!email.includes("@")) throw new ApiError("That email doesn’t look right. Check it and try again.");
+  const next = { ...current, email };
+  writeSession(next);
+  return next;
 }
 
 /** Test hook: restores the seeded sample data. */
