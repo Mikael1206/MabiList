@@ -1,20 +1,8 @@
 const sameText = (a, b) => a === b || (typeof a === 'string' && typeof b === 'string' &&
   a.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === b.trim().replace(/\s+/g, ' ').toLocaleLowerCase());
 const sameNumber = (a, b) => a === b || (typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 0.005);
-const exactKeys = (value, keys) => Object.keys(value).sort().join(',') === [...keys].sort().join(',');
+import { validExtraction } from '../src/extract-orders.mjs';
 const itemName = (value) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-
-export function validExtraction(data) {
-  if (!data || !exactKeys(data, ['orders']) || !Array.isArray(data.orders) || data.orders.length !== 1) return false;
-  const order = data.orders[0];
-  if (!order || typeof order !== 'object' || !exactKeys(order, ['customer_name', 'items', 'total_php', 'delivery_date', 'payment_status']) || !Array.isArray(order.items)) return false;
-  if (!['paid', 'unpaid', 'not_stated'].includes(order.payment_status)) return false;
-  if (![order.customer_name, order.delivery_date].every((v) => v === null || typeof v === 'string')) return false;
-  if (order.total_php !== null && (typeof order.total_php !== 'number' || !Number.isFinite(order.total_php))) return false;
-  return order.items.every((item) => item && exactKeys(item, ['name', 'quantity', 'unit_price_php']) && typeof item.name === 'string' &&
-    (item.quantity === null || (Number.isInteger(item.quantity) && item.quantity > 0)) &&
-    (item.unit_price_php === null || (typeof item.unit_price_php === 'number' && Number.isFinite(item.unit_price_php) && item.unit_price_php >= 0)));
-}
 
 export function scoreCase(expected, actual) {
   const names = ['customer_name', 'items', 'quantity', 'price', 'delivery_date', 'payment_status'];
