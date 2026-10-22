@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { getSession } from "./session.mjs";
+import { handleExtraction } from "./extractions.mjs";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3001);
@@ -18,6 +19,21 @@ const server = createServer(async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
     response.writeHead(result.status);
     response.end(JSON.stringify(result.body));
+    return;
+  }
+
+  if ((request.method === 'POST' && (request.url === '/api/extractions' || /^\/api\/extractions\/[0-9a-f-]{36}\/retry$/i.test(request.url))) ||
+      (request.method === 'GET' && /^\/api\/uploads\/[0-9a-f-]{36}\/source$/i.test(request.url))) {
+    const result = await handleExtraction(request);
+    response.setHeader('Cache-Control', 'no-store');
+    if (result.binary) {
+      response.setHeader('Content-Type', result.contentType);
+      response.writeHead(result.status);
+      response.end(result.binary);
+    } else {
+      response.writeHead(result.status);
+      response.end(JSON.stringify(result.body));
+    }
     return;
   }
 

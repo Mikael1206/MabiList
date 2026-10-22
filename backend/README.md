@@ -2,7 +2,9 @@
 
 This is the server workspace. It owns future API routes, input validation, order rules,
 extraction, all Supabase product-data reads and writes, cleanup jobs, and server-only credentials. It imports no code from
-`web/`. Implemented routes are `GET /health` and `GET /api/session`; product routes are still pending.
+`web/`. Implemented routes are `GET /health`, `GET /api/session`, `POST /api/extractions`,
+`POST /api/extractions/{uploadId}/retry`, and owner-authenticated
+`GET /api/uploads/{uploadId}/source`. The extraction route stores review drafts only.
 
 Run it locally with `npm run dev` from this directory. The default address is
 `http://127.0.0.1:3001`; `HOST` and `PORT` can override it. No install step is needed yet because
@@ -77,6 +79,30 @@ character score is diagnostic: it ignores case and punctuation, so inspect trans
 misread prices, quantities, speaker labels, and corrections. The same rethink lines apply.
 For Cloudflare, this OCR-first runner uses `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (a text
 model); the image-first evaluator continues to use the vision model.
+
+## TASK-003 extraction route
+
+Set `DAILY_EXTRACTION_LIMIT` to a positive integer in the backend environment along with the
+Supabase and Cloudflare credentials. The route accepts JSON `{ "kind": "text", "text": "..." }`
+or multipart `kind=image` with repeated PNG `files` (10 MB total, up to five files). It checks
+the Supabase access token before reading the body, stores the raw source under the verified
+owner, runs Tesseract `eng+tgl` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
+The response contains a review draft and temporary source preview. It never confirms an order.
+The same bearer token is used for database and private Storage calls, with row-level security
+and owner filters. The source preview endpoint streams the first screenshot while the upload
+is available. Apply `supabase/migrations/20261022210751_allow_unknown_item_quantity.sql` before
+using the route, since an extracted item may have unknown quantity. The migration was applied
+to the dedicated MabiList project on 2026-10-23.
+
+Both TASK-003 SQL changes were applied directly to that project for verification, so its
+`supabase_migrations.schema_migrations` history does not yet list their versions. The files are
+safe to replay when the normal CLI migration workflow records them; reconcile local and remote
+migration history before using `supabase db push` on this project.
+
+The daily cap reserves each attempt, including retries, in a database transaction. The route
+is still under TASK-003 verification: real signed-in Storage and upload tests, reliable
+multiple-order/no-order handling, and frontend review of nullable draft quantities remain open. Use synthetic chats
+only while INV-011's real-data gate and TASK-001 accuracy target remain open.
 
 For a Hugging Face OCR-first evaluation, set `HF_TOKEN` in `backend/.env` and run
 `npm run eval:ocr -- --provider=huggingface --limit=1` first. It calls Qwen3-8B through

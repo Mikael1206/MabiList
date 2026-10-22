@@ -127,10 +127,13 @@ Money in JSON is a number of Philippine pesos with at most two fractional digits
 unknown and zero means ₱0. The backend must validate finite non-negative values and at most two
 decimal places, then calculate using integer centavos. `OrderItem.unit_price_php` is required
 and nullable in responses and writes. `OrderInput` keeps `total_php` as the seller-confirmed
-order total. If every item has a unit price, the calculated total is quantity × unit price for
-each item. If this conflicts with an explicitly supplied total, return `CONFLICT` with a field
-error until the seller resolves it; do not silently choose one. When an item price is unknown,
-an explicit order total may still be recorded. Never infer zero from null.
+order total. Extraction drafts may also have `OrderItem.quantity: null` when quantity is absent
+from the chat (ADR-017); confirmation requires a positive integer. The frontend's local type
+must be reconciled before live integration. If every item has a known quantity and unit price,
+the calculated total is quantity × unit price for each item. If this conflicts with an
+explicitly supplied total, return `CONFLICT` with a field error until the seller resolves it;
+do not silently choose one. When a quantity or price is unknown, an explicit order total may
+still be recorded. Never infer zero from null.
 
 Extraction sends pasted input as JSON `{ "kind": "text", "text": "..." }`; image input is
 `multipart/form-data` with `kind=image` and repeated `files` parts. The frontend adapter maps its
@@ -299,7 +302,7 @@ are deleted by the hourly job before 7 days.
 | Owner | Supabase Auth user: `id`, email, password hash; `profiles` row: `owner_id` (primary key/FK), `shop_name` | Auth managed by Supabase. The profile supplies the shop name and is retained by Delete my logbook (ADR-013) |
 | `uploads` | `id`, `owner_id`, `kind` (image / text), `image_paths` (text[]), `raw_text` (nullable), `status` (processing / draft_ready / no_order / failed / consumed / expired), `failure_reason`, `created_at`, `expires_at`, `raw_deleted_at` | The only place raw chat content lives. `raw_text` is set to null and Storage files are deleted on confirm, discard, no-order, or expiry (INV-001) |
 | `orders` | `id`, `owner_id`, `upload_id` (nullable), `conversation_id` (nullable), `source` (screenshot / paste / manual / messenger / instagram / telegram — BR-009), `state` (draft / confirmed), `customer_name`, `total_php` (numeric, nullable), `delivery_date` (date, nullable), `payment_status` (unpaid / paid / not_stated), `delivery_status` (pending / delivered), `not_in_chat` (text[] of field names), `matches_order_id` (nullable), `is_sample` (boolean), `confirmed_at`, `created_at`, `updated_at` | BR-001 – BR-003. Drafts and confirmed orders share one table; totals filter on `state = confirmed` (INV-002). A draft with `matches_order_id` is a proposed update — the target keeps its confirmed values until the owner applies it (F-005). `is_sample` drives the "sample data" label (INV-009) |
-| `order_items` | `id`, `order_id`, `owner_id`, `name`, `quantity` (integer), `unit_price_php` (numeric, nullable) | BR-002, BR-005, ADR-013. Retain optional unit prices; seller resolves conflicting totals. Top items (BR-006) group by `lower` + collapsed spaces of `name` |
+| `order_items` | `id`, `order_id`, `owner_id`, `name`, `quantity` (positive integer or null on drafts), `unit_price_php` (numeric, nullable) | BR-002, BR-005, ADR-013, ADR-017. Retain unknown extracted values; seller resolves conflicting totals. Top items (BR-006) group by `lower` + collapsed spaces of `name` |
 | `channel_connections` | `id`, `owner_id`, `platform` (messenger / instagram / telegram), `external_id` (Page ID, Instagram account ID, or bot ID; unique per platform), `display_name`, `status` (active / disconnected), `created_at` | F-006. Which connected account belongs to which owner. No tokens here |
 | `channel_secrets` | `connection_id`, `access_token` (Page token or bot token), `webhook_secret` (Telegram) | F-006. Row-level security on with **no** policies, so only the service key can read it; never sent to the browser (INV-AS-002) |
 | `conversations` | `id`, `owner_id`, `connection_id`, `platform_thread_id`, `customer_name`, `status` (idle / pending / processing / draft_ready / failed / expired), `failure_reason`, `open_order_id` (nullable), `window_start_at`, `last_message_at` | F-006. One customer thread on a connected account. Holds no message text |

@@ -383,6 +383,12 @@ happening twice, and shows judges the thinking wasn't accidental.*
 >>>>>>> main
 - **Date:** 2026-10-23
 
+### ADR-017: Preserve unknown extracted item quantities in drafts
+- **Context:** TASK-001's extractor represents an unstated quantity as null under INV-003, while the original `order_items.quantity` column and frontend `OrderItem` type require a number. Inventing quantity one would make an unsupported order fact look confirmed.
+- **Decision** [implementation clarification, 2026-10-23]: Allow null quantity on extraction drafts and in the backend response. A seller must supply a positive quantity before confirmation. The canonical HTTP contract records this nullable draft field; the frontend's local type must be updated during integration review under ADR-014.
+- **Consequences:** The dedicated MabiList database gains a nullable quantity migration. TASK-003 remains in progress until the frontend contract, draft review, and confirmation checks agree; totals with unknown quantities remain unknown.
+- **Date:** 2026-10-23
+
 ### ADR-00N: {title}
 - **Context:** {...}
 - **Decision:** {...}
