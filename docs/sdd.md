@@ -12,51 +12,74 @@ Library and platform calls are named at the level of "what", not exact function 
 confirm every API against the installed version and current platform docs at build time
 (anti-slop Hard Gate).*
 
+## 0. Accepted contract decisions — 2026-10-23 (ADR-013)
+
+These decisions govern the design below. TASK-022 pins the frontend-facing contract and aligns
+the existing types and mock; live API and database behavior remain unimplemented.
+
+- **Prices:** `order_items.unit_price_php` is nullable; `orders.total_php` remains nullable.
+  Calculate quantity × unit price using decimal money arithmetic when all items are priced;
+  otherwise preserve an explicit order total or null. Return a review conflict if the stated
+  total differs from the calculation; require seller resolution before confirming. Never map
+  null to zero. The implementation contract uses PHP peso numbers with at most two decimal places
+  and integer centavo calculations.
+- **Payment and totals:** preserve `not_stated` rather than defaulting to unpaid. Amount owed
+  includes only confirmed, priced, explicitly unpaid orders, whether delivered or pending.
+  Return unknown-payment count separately. Period monetary totals use `confirmed_at` in
+  Asia/Manila, Monday-start weeks; delivery-date lists are separate.
+- **Review evidence:** provide owner-authorized temporary source access and field-to-source
+  references. Highlight only validated matches. Treat copied excerpts/OCR text as raw content:
+  do not copy them into permanent order fields, logs, or the offline cache. TASK-022 defines
+  half-open text offsets and normalized image rectangles; matching and validation remain backend work.
+- **Shared sources:** all confirm/discard/apply-update deletion references below mean source
+  batch resolution when multiple drafts share an upload or extraction window. Review all such
+  drafts together, then resolve them together; preserve the original seven-day expiry. Expiry
+  removes unresolved drafts and raw content. Source cleanup must be retryable after storage
+  failures and never reported complete until the raw content and evidence are gone.
+- **Delete my logbook:** owner-authenticated operation removes orders/items, drafts, raw uploads,
+  messages, conversations, review evidence, connections, and credentials; retains login/profile.
+  Fence mutations and incoming/in-flight extraction writes before cleanup so late results cannot
+  recreate deleted data. Unsubscribe channels and retry partial cleanup safely. Reconnection is
+  explicit. Clear local logbook caches and invalidate other devices' caches on next contact;
+  an offline device cannot be remotely cleared immediately. Endpoint and fencing mechanism are
+  implementation-contract work, not existing routes.
+- **Offline:** cache only the last successfully loaded owner-specific logbook, with a freshness
+  timestamp. Reads only; no queued mutations, extraction, or raw-evidence cache. Clear cached
+  shop data on sign-out/account switch and logbook deletion; reload on reconnect. Without a cache,
+  show offline/error with retry. Never present cached values as current.
+
 ## 1. Architecture overview
 
 *A short paragraph + a simple diagram (ASCII is fine) of the major components and how they
 talk to each other.*
 
-A Next.js web app, used in the phone browser, talks to Supabase for sign-in, data, and file
-storage. Anything involving the AI, deletion of raw chat content, platform tokens, or business
-rules runs in Next.js server routes on Vercel; the browser only reads its own data directly,
-protected by Supabase's row-level security. The AI is called from one server-side function with
-two interchangeable providers; the accuracy spike picks which one (`feasibility.md` §3). An hourly
-Supabase Cron job calls a protected route that deletes raw chat content before it turns 7 days
-old (INV-001).
+A Next.js web app in `web/` uses Supabase Auth for sign-in and its API adapter for product data.
+An independent Node.js service in `backend/` owns all product-data reads and writes, uploads,
+AI calls, deletion, platform tokens, and business rules. The intended browser path is same-origin
+`/api`; routing and backend hosting are still to be set up (ADR-014). The backend verifies each
+user and Supabase row-level security protects its owner-scoped database operations. One server
+function calls the selected AI provider (`feasibility.md` §3). An hourly Supabase Cron job calls
+a protected backend route to delete raw chat content before it turns 7 days old (INV-001).
 
 Chats come in two ways (ADR-012). **Way 2** (built first): the owner uploads screenshots or pastes
 text, and the extraction route answers with the draft directly. **Way 1** (built second): Meta
 and Telegram send each new message on a connected Page, Instagram professional account, or shop
 bot to a public webhook route; the route checks the platform's signature, stores the text under
 the owner of that connection, answers the platform, and then runs the same `extractOrders()` on
-the conversation. Because the owner didn't start that request, the new draft reaches an open
-logbook through Supabase Realtime. No crawler, search index, agents, graph, or job queue —
+the conversation. Because the owner didn't start that request, the backend must notify the open
+logbook through an owner-scoped live channel; the transport is still to be chosen. The logbook
+reloads on focus if live updates fail. No crawler, search index, agents, graph, or job queue —
 `stack-decision.md` §1 and ADR-009 explain why none is needed.
 
 ```
- Phone browser (Next.js pages)
-   │  ① sign in (email + password)          ┌──────────────────────── Supabase (Singapore) ─┐
-   ├──────────────────────────────────────▶ │ Auth            (bcrypt password hashes)      │
-   │  ② upload screenshots (resized)        │ Storage: private "chat-uploads" bucket        │
-   ├──────────────────────────────────────▶ │   one folder per owner, row-level security    │
-   │  ③ read own orders / stats             │ Postgres: uploads, orders, order_items,       │
-   ├──────────────────────────────────────▶ │   channel_connections, conversations,         │
-   │  ⑧ live new drafts (Realtime) ◀────────│   chat_messages; channel_secrets (no client   │
-   │                                        │   access); row-level security on all          │
-   │                                        │ Cron (hourly) ─────────────┐                  │
-   │  ④ extract / confirm / edit / discard  └──────────▲─────────────────┼──────────────────┘
-   │     connect / disconnect accounts                 │                 │ ⑥ HTTP + secret
-   ▼                                                   │                 │
- Next.js server routes (Vercel, Singapore region) ─────┘                 │
-   │  user routes: check sign-in, then ownership; validate AI output     │
-   │  /api/jobs/expire-uploads ◀─────────────────────────────────────────┘
-   │  /api/webhooks/meta, /api/webhooks/telegram/{id} ◀── ⑦ Meta / Telegram push each
-   │     check signature or secret token first                 new message (Way 1)
-   │  ⑤ one AI call per upload or conversation, behind extractOrders()
-   ▼
- AI provider (chosen by spike):  Gemini API (free tier — synthetic chats only)
-                                 or Cloudflare Workers AI (Llama 3.2 11B Vision)
+ Browser (`web/`) ── sign-in ─────────────────────▶ Supabase Auth
+      │
+      └── product reads, uploads, writes via `/api` ──▶ Backend (`backend/`)
+             ▲  owner-scoped live notifications            │
+             └─────────────────────────────────────────────┤
+                                                           ├──▶ Supabase Postgres + private Storage
+ Meta / Telegram webhooks ─────────────────────────────────▶├──▶ AI provider (selected by spike)
+ Supabase Cron (expiry) ────────────────────────────────────▶┘
 ```
 
 ## 2. Components
@@ -64,7 +87,7 @@ logbook through Supabase Realtime. No crawler, search index, agents, graph, or j
 | Component | Responsibility | Maps to feature(s) |
 |---|---|---|
 | Sign-in pages | Email + password sign-up, sign-in, sign-out through Supabase Auth; everything else hidden until signed in | F-007 |
-| Capture screen | Pick screenshots from the gallery or paste text; resize images in the browser; upload to the owner's Storage folder; show upload progress and retry without re-picking (INV-013) | F-001 |
+| Capture screen | Pick screenshots from the gallery or paste text; resize images in the browser; send them to the backend extraction route, which owns private Storage paths; show upload progress and retry without re-picking (INV-013) | F-001 |
 | Review screen | Show a draft field by field, marking "not in chat" fields; edit; confirm or discard; for a matched update, show changes field by field and let the owner approve each one | F-002, F-005 |
 | Logbook screen | Confirmed orders sorted by delivery date, filtered by payment/delivery status; count of drafts awaiting review; source of each order (BR-009); mark paid or delivered; live new drafts from connected accounts, with a "not live — reloading" notice if the connection drops; empty, loading, and error states | F-003, F-002, F-006 |
 | Connected accounts screen | Connect Facebook (Pages + linked Instagram professional accounts) through Meta's login dialog; connect a Telegram bot by token; list connections with status (active / disconnected — reconnect); disconnect; list conversations whose extraction failed, with retry | F-006 |
@@ -79,8 +102,86 @@ logbook through Supabase Realtime. No crawler, search index, agents, graph, or j
 | Conversation extraction | Loads the conversation's messages in the BR-010 window plus its open order; enforces the daily AI cap; calls `extractOrders()` with text; runs the same validator; creates a draft (new order) or a proposed update (`matches_order_id` = the conversation's open order); records the conversation's status | F-006, F-005, INV-006, INV-013 |
 | Connect routes | Meta: start the login dialog with a one-time `state` value, handle the callback, let the owner pick Pages, save each Page (and its linked Instagram professional account) with its token, subscribe the app to the Page's messages `[verify current Graph API steps]`. Telegram: check the bot token with the Bot API, register the webhook with a random secret token, save | F-006, INV-AS-002 |
 
-**Server routes (API surface).** All take and return JSON. "Owner check" means the route reads
-the signed-in user from the session on the server, then confirms the row's `owner_id` matches —
+**Core API contract — TASK-022, amended by ADR-014.** These routes belong to `backend/` and are
+intended to appear under same-origin `/api` to the browser. The hosting/proxy and Supabase auth
+credential transport are still to be decided; no product route is implemented yet. Except for
+sign-in/sign-up/password reset, every user route rejects missing or invalid credentials before
+processing the body, derives `owner_id` from the verified identity, and separately verifies
+ownership of referenced rows (INV-AS-001). The browser never
+sends `owner_id`. Route responses omit `owner_id`; it is a database field, not frontend data.
+Requests with JSON use `Content-Type: application/json`. Product route responses are JSON except
+the source-preview stream. Resource responses are
+direct objects (no generic success envelope). The server validates all request data; TypeScript
+types are not runtime validation.
+
+Errors use `{ "error": { "code": "...", "message": "...", "fields": { "field": "..." } } }`;
+`fields` is optional and maps request field paths to safe user-facing messages. The HTTP status
+is authoritative. Codes: `UNAUTHENTICATED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404),
+`VALIDATION_ERROR` (400), `CONFLICT` (409), `RATE_LIMITED` (429), `INTERNAL_ERROR` (500).
+Never return stack traces, provider output, secrets, or raw chat in an error. For repeated
+confirm/discard, return `CONFLICT` if the resource is already resolved; clients may refresh.
+Idempotency keys and a general retry guarantee are deferred until a concrete operation needs
+them. The mock's internal simulated failure is not a wire error response.
+
+Money in JSON is a number of Philippine pesos with at most two fractional digits; null means
+unknown and zero means ₱0. The backend must validate finite non-negative values and at most two
+decimal places, then calculate using integer centavos. `OrderItem.unit_price_php` is required
+and nullable in responses and writes. `OrderInput` keeps `total_php` as the seller-confirmed
+order total. If every item has a unit price, the calculated total is quantity × unit price for
+each item. If this conflicts with an explicitly supplied total, return `CONFLICT` with a field
+error until the seller resolves it; do not silently choose one. When an item price is unknown,
+an explicit order total may still be recorded. Never infer zero from null.
+
+Extraction sends pasted input as JSON `{ "kind": "text", "text": "..." }`; image input is
+`multipart/form-data` with `kind=image` and repeated `files` parts. The frontend adapter maps its
+`File[]` input to that multipart request. Retry has an empty JSON body. A successful `draft_ready`
+response includes temporary source preview and field evidence alongside the drafts; `no_order`,
+`unreadable`, and `failed` return the upload and a safe failure reason where applicable. Preview
+access is owner-authenticated; image preview supplies a same-origin `preview_path` such as
+`/api/uploads/{uploadId}/source`. The backend checks ownership and streams the private image;
+it never returns a Storage path or public URL. Text evidence uses half-open character offsets into the preview text;
+image evidence uses normalized `[0,1]` rectangles. Only validated evidence is returned. Raw
+preview and evidence are erased together when the source batch resolves or its original seven-day
+expiry arrives. The server must not persist evidence in order fields, errors, logs, or offline
+cache.
+
+**Examples** (IDs and values illustrative; auth transport omitted until integration is chosen;
+no real owner identifiers are returned):
+
+```http
+POST /api/orders
+Content-Type: application/json
+
+{"customer_name":"Lyn Ramos","items":[{"name":"Brownie box","quantity":2,"unit_price_php":null}],"total_php":600,"delivery_date":"2026-10-21","payment_status":"not_stated"}
+```
+
+```json
+{"order":{"id":"ord_123","upload_id":null,"source":"manual","state":"confirmed","customer_name":"Lyn Ramos","items":[{"id":"item_123","order_id":"ord_123","name":"Brownie box","quantity":2,"unit_price_php":null}],"total_php":600,"delivery_date":"2026-10-21","payment_status":"not_stated","delivery_status":"pending","not_in_chat":[],"matches_order_id":null,"is_sample":false,"confirmed_at":"2026-10-20T10:00:00Z","created_at":"2026-10-20T10:00:00Z","updated_at":"2026-10-20T10:00:00Z"}}
+```
+
+```json
+{"error":{"code":"CONFLICT","message":"The item prices do not add up to the order total.","fields":{"total_php":"Review the order total or item prices."}}}
+```
+
+The frontend API adapter exposes `listOrders(): Promise<Order[]>` and
+`getOrder(id): Promise<Order>`; the real adapter fetches `GET /api/orders` and
+`GET /api/orders/{id}` and unwraps their JSON resource objects. The backend maps database rows
+to owner-free responses. Discard returns HTTP 204 with no body. Extraction response union:
+
+```ts
+type ExtractionResponse =
+  | { status: "draft_ready"; upload: Upload; drafts: Order[]; source_preview: SourcePreview; field_evidence: FieldEvidence[] }
+  | { status: "no_order"; upload: Upload }
+  | { status: "unreadable"; upload: Upload }
+  | { status: "failed"; upload: Upload };
+```
+
+Each `FieldEvidence` has an `order_id`, `field`, and either text `start`/`end` offsets plus a
+short matched quote, or a normalized image rectangle. Exact evidence storage and generation stay
+behind the API; callers must not treat an absent match as evidence.
+
+"Owner check" means the route verifies
+the signed-in user on the server, then confirms the row's `owner_id` matches —
 two separate checks (INV-AS-001). The routes use the signed-in user's Supabase client, so
 row-level security applies as a third layer. Only the expiry job and the webhook routes use the
 service key, because no user is signed in for them; webhook routes take the owner only from the
@@ -88,12 +189,16 @@ verified connection row, never from anything in the request (INV-AS-001).
 
 | Route | Does | Owner check | Feature |
 |---|---|---|---|
-| `POST /api/extractions` | Body: pasted text, or the Storage paths of 1–5 uploaded screenshots `[proposed limit]`. Creates an `uploads` row, runs extraction, returns the drafts, or "no order found," or a failure | yes — the paths must sit in the owner's folder | F-001, F-005 |
-| `POST /api/extractions/{uploadId}/retry` | Re-runs a failed extraction on the stored upload | yes | F-001, INV-013 |
-| `POST /api/orders` | Manual entry: saves an owner-typed order as confirmed | yes (owner from session) | F-002 |
-| `POST /api/orders/{id}/confirm` | Saves the owner's values, sets the state to confirmed and `confirmed_at`, deletes the raw upload | yes | F-002, INV-001 |
-| `PATCH /api/orders/{id}` | Edits a confirmed order (any BR-002 field, including payment and delivery status) | yes | F-002, F-003 |
-| `DELETE /api/orders/{id}` | Discards a draft and deletes its raw upload. Drafts only — deleting confirmed orders isn't in the PRD | yes | F-002, INV-001 |
+| `GET /api/orders` | Returns `{orders: Order[]}` for this owner; list includes drafts and confirmed orders | yes | F-002, F-003 |
+| `GET /api/orders/{id}` | Returns `{order: Order}` for this owner's order | yes — referenced order | F-002, F-003 |
+| `GET /api/uploads/{uploadId}/source` | Streams the private source image while its upload remains available; no public Storage URL | yes — referenced upload | F-002, INV-001 |
+| `POST /api/extractions` | Text JSON or image multipart request per contract above. Returns `ExtractionResponse`; creates owner-scoped upload and drafts | yes — server owns all stored paths | F-001, F-005 |
+| `POST /api/extractions/{uploadId}/retry` | Empty JSON body; reruns a failed extraction on stored upload; same response union | yes | F-001, INV-013 |
+| `POST /api/orders` | Body: `OrderInput`; returns `{order: Order}` for manually confirmed entry | yes (owner from verified identity) | F-002 |
+| `POST /api/orders/{id}/confirm` | Body: `OrderInput`; returns `{order: Order}`; sets state/confirmed_at. For shared sources, delete only after the full source batch resolves | yes | F-002, INV-001 |
+| `PATCH /api/orders/{id}` | Body: partial `OrderInput` plus optional `delivery_status`; returns `{order: Order}` | yes | F-002, F-003 |
+| `DELETE /api/orders/{id}` | Discards a draft; HTTP 204, no body. Delete its source only when the shared source batch resolves | yes | F-002, INV-001 |
+| `POST /api/uploads/{uploadId}/resolve` | Body: `{resolutions:[{order_id,action:"confirm",values:OrderInput}|{order_id,action:"discard"}]}`; must include exactly one action for every unresolved draft tied to the source. Returns `{confirmed_orders,discarded_order_ids}`. Resolve atomically, then remove raw content/evidence. Single-order confirm/discard routes return `CONFLICT` when sibling drafts remain | yes; every draft must belong to this upload and owner | F-002, INV-001 |
 | `POST /api/orders/{draftId}/apply-to/{targetId}` | Body: the fields the owner approved. Copies only those onto the target confirmed order, then deletes the draft and its raw upload | yes — both orders | F-005, INV-006 |
 | `POST /api/jobs/expire-uploads` | Deletes overdue raw uploads and connected-account messages and their drafts; marks the upload or conversation expired | shared secret, not a user session | INV-001 |
 | `GET /api/connect/meta/start` | Creates a one-time `state` tied to the session; redirects to Meta's login dialog asking only for the Page and Instagram messaging permissions F-006 needs `[verify exact permission names]` | yes (owner from session) | F-006 |
@@ -106,8 +211,10 @@ verified connection row, never from anything in the request (INV-AS-001).
 | `POST /api/webhooks/telegram/{connectionId}` | Telegram updates for one bot, checked against `X-Telegram-Bot-Api-Secret-Token` | secret token for that connection, then owner from the connection row | F-006 |
 | `POST /api/webhooks/meta/data-deletion` | Meta's data-deletion callback: deletes stored messages for the named user and returns a status reference `[verify Meta's required request and response format]` | Meta's signed request | F-006, INV-001 |
 
-Reads — the logbook list, drafts, upload statuses, and the statistics function — go straight
-from the browser to Supabase under row-level security.
+All product-data reads — logbook, drafts, upload statuses, private source images, and statistics
+— go through the frontend API adapter to backend routes. Screens and the adapter do not query
+product tables or Storage directly. The backend calls Supabase under verified owner identity
+and row-level security. The exact statistics response and route will be pinned in its task packet.
 
 ## 3. Data flow
 
@@ -117,14 +224,12 @@ from the browser to Supabase under row-level security.
 
 1. The owner signs in with email and password; Supabase Auth sets the session (F-007).
 2. On the capture screen they pick two screenshots of one conversation. The browser shrinks
-   them `[proposed: longest side about 1,600 px]` and uploads them to
-   `chat-uploads/{owner_id}/{upload_id}/`. Storage row-level security lets an owner write only
-   inside their own folder. Progress shows; a failed upload can be retried from the same files
+   them `[proposed: longest side about 1,600 px]` and sends them as multipart files to
+   `POST /api/extractions`. Progress shows; a failed upload can be retried from the same files
    still held by the page.
-3. The browser calls `POST /api/extractions` with the two paths. The route reads the user from the
-   session, confirms the paths are inside that user's folder, checks the daily upload cap
-   `[proposed — value set from the spike]`, and saves an `uploads` row with status `processing`
-   and `expires_at` = upload time + 7 days.
+3. The backend verifies the user, checks the daily upload cap `[proposed — value set from the
+   spike]`, stores the images in that owner's private Storage folder, and saves an `uploads` row
+   with status `processing` and `expires_at` = upload time + 7 days.
 4. The route downloads the images and calls `extractOrders()`. The instructions tell the AI that
    the chat is data, not instructions; to return only the BR-002 fields as JSON; to return
    `null` for anything not stated (INV-003); and to return one object per distinct order. The
@@ -142,7 +247,7 @@ from the browser to Supabase under row-level security.
    retry button (INV-008, INV-013).
 7. The route returns the drafts. The review screen shows every field, with "not in chat" fields
    marked. The owner fixes the delivery date and taps Confirm.
-8. `POST /api/orders/{id}/confirm` re-checks session and ownership, saves the owner's values, sets
+8. `POST /api/orders/{id}/confirm` re-checks identity and ownership, saves the owner's values, sets
    `state = confirmed` and `confirmed_at = now()`, deletes both screenshots through the Storage
    API, and marks the upload `consumed` with `raw_deleted_at` (INV-001).
 9. The logbook and statistics screens update from the response without a page refresh, and
@@ -167,7 +272,7 @@ lets the app tell the owner "A draft expired after 7 days" (F-002).
    message ID is skipped), and marks the conversation `pending`. Non-text messages are skipped
    `[proposed]`. The owner of every row comes from the connection, not the request.
 4. The route answers Meta right away, then runs conversation extraction after the response
-   `[confirm the after-response mechanism against the installed Next.js / Vercel versions; if it
+   `[choose and verify a post-response mechanism for the backend host; if it
    isn't reliable, a Supabase Cron sweep picks up pending conversations]`. If an extraction for
    that conversation is already running, the new message waits for the next run.
 5. Conversation extraction loads the BR-010 window, checks the daily AI cap, and calls
@@ -175,9 +280,8 @@ lets the app tell the owner "A draft expired after 7 days" (F-002).
    UJ-001. If the conversation has an open order, the result is saved as a proposed update to it
    (F-005); otherwise as a new draft with `source = messenger` and `conversation_id` set. No
    order found: no draft. Failure: the conversation becomes `failed` with a retry (INV-013).
-6. The owner's open logbook is subscribed to Realtime changes on `orders` and `conversations`.
-   Realtime applies row-level security, so the owner receives only their own rows; the new draft
-   appears without a refresh. If the subscription drops, the screen says so and reloads on
+6. The owner's open logbook receives changes through the backend's owner-scoped live channel;
+   the new draft appears without a refresh. If the connection drops, the screen says so and reloads on
    reconnect or focus (INV-008).
 7. The owner confirms as in UJ-001 steps 7–8. Confirm deletes the conversation's `chat_messages`
    in the window used for that draft (INV-001); the conversation row keeps only the customer name,
@@ -191,10 +295,10 @@ are deleted by the hourly job before 7 days.
 
 | Entity | Key fields | Notes |
 |---|---|---|
-| Owner | Supabase Auth user: `id`, email, password hash | Managed by Supabase Auth (bcrypt). No separate profile table in the MVP |
+| Owner | Supabase Auth user: `id`, email, password hash; `profiles` row: `owner_id` (primary key/FK), `shop_name` | Auth managed by Supabase. The profile supplies the shop name and is retained by Delete my logbook (ADR-013) |
 | `uploads` | `id`, `owner_id`, `kind` (image / text), `image_paths` (text[]), `raw_text` (nullable), `status` (processing / draft_ready / no_order / failed / consumed / expired), `failure_reason`, `created_at`, `expires_at`, `raw_deleted_at` | The only place raw chat content lives. `raw_text` is set to null and Storage files are deleted on confirm, discard, no-order, or expiry (INV-001) |
 | `orders` | `id`, `owner_id`, `upload_id` (nullable), `conversation_id` (nullable), `source` (screenshot / paste / manual / messenger / instagram / telegram — BR-009), `state` (draft / confirmed), `customer_name`, `total_php` (numeric, nullable), `delivery_date` (date, nullable), `payment_status` (unpaid / paid / not_stated), `delivery_status` (pending / delivered), `not_in_chat` (text[] of field names), `matches_order_id` (nullable), `is_sample` (boolean), `confirmed_at`, `created_at`, `updated_at` | BR-001 – BR-003. Drafts and confirmed orders share one table; totals filter on `state = confirmed` (INV-002). A draft with `matches_order_id` is a proposed update — the target keeps its confirmed values until the owner applies it (F-005). `is_sample` drives the "sample data" label (INV-009) |
-| `order_items` | `id`, `order_id`, `owner_id`, `name`, `quantity` (integer) | BR-002. Item prices are used only to compute the total and aren't stored. Top items (BR-006) group by `lower` + collapsed spaces of `name` |
+| `order_items` | `id`, `order_id`, `owner_id`, `name`, `quantity` (integer), `unit_price_php` (numeric, nullable) | BR-002, BR-005, ADR-013. Retain optional unit prices; seller resolves conflicting totals. Top items (BR-006) group by `lower` + collapsed spaces of `name` |
 | `channel_connections` | `id`, `owner_id`, `platform` (messenger / instagram / telegram), `external_id` (Page ID, Instagram account ID, or bot ID; unique per platform), `display_name`, `status` (active / disconnected), `created_at` | F-006. Which connected account belongs to which owner. No tokens here |
 | `channel_secrets` | `connection_id`, `access_token` (Page token or bot token), `webhook_secret` (Telegram) | F-006. Row-level security on with **no** policies, so only the service key can read it; never sent to the browser (INV-AS-002) |
 | `conversations` | `id`, `owner_id`, `connection_id`, `platform_thread_id`, `customer_name`, `status` (idle / pending / processing / draft_ready / failed / expired), `failure_reason`, `open_order_id` (nullable), `window_start_at`, `last_message_at` | F-006. One customer thread on a connected account. Holds no message text |
@@ -203,8 +307,7 @@ are deleted by the hourly job before 7 days.
 
 Every table has row-level security: an owner can read only rows where `owner_id` equals their
 user ID (`channel_secrets`: nobody but the service key). Database writes go through the server
-routes; only screenshot files are written by the browser, straight into the owner's Storage
-folder. Never store phone numbers or addresses
+routes; the backend writes screenshot files into the owner's private Storage folder. Never store phone numbers or addresses
 (INV-001) — the schema has no column for them.
 
 ## 5. External integrations
@@ -220,8 +323,8 @@ fallback behavior if it's unavailable.*
 | Supabase Cron | Hourly call to `/api/jobs/expire-uploads` | Vercel's daily scheduled job with a shorter cut-off — needs a ledger entry first (ADR-009) `[verify at setup that Cron can make HTTP calls on the free plan]` |
 | Gemini API (Google's official JS SDK or REST) | Candidate AI provider; JSON output in the BR-002 shape | **Free tier: synthetic chats only** (ADR-008). If down or over quota: the upload shows as failed with retry, and the owner can enter the order by hand (F-002) |
 | Cloudflare Workers AI (REST API), Llama 3.2 11B Vision | Candidate AI provider; doesn't train on inputs | Same as above. The model requires accepting Meta's license once before first use `[confirm the exact step in Cloudflare's model page at build time]` |
-| Vercel Hobby | Hosts the Next.js app and server routes (up to 300 s per call); gives the public HTTPS URL the webhooks need | Run the demo locally (Way 2 only — webhooks need a public URL) |
-| Supabase Realtime | Pushes new drafts and conversation statuses to the open logbook (F-006, ADR-012) | The logbook reloads on focus and on a manual refresh |
+| Vercel Hobby | Planned host for the Next.js frontend; backend hosting and public webhook URL are pending ADR-014 integration work | Run the frontend locally with mock data until the backend is deployed |
+| Live update transport (pending) | Backend relays owner-scoped draft and conversation status changes to the open logbook (F-006, ADR-014) | The logbook reloads on focus and on a manual refresh |
 | Meta app — Messenger Platform and Instagram messaging (Graph API, webhooks) | F-006: Facebook Login for Pages, Page subscription, message webhooks, data-deletion callback. Development mode reaches only Pages and accounts where the team has a role; real sellers need App Review and possibly business verification `[verify]`; App Review asks for a privacy policy URL `[verify]` | Demo on the team's test Page and Instagram account; if Meta is down, Way 2 still works |
 | Telegram Bot API | F-006: check the bot token, register / remove the webhook with a secret token, receive updates | Way 2 still works |
 
@@ -242,7 +345,7 @@ it, and what happens to it after the hackathon.*
   messaging the team's own test Page, Instagram account, and bot. Gemini's free tier never
   receives real chats (ADR-008).
 - **Where it's stored:** Supabase in the Singapore region; Supabase encrypts data at rest
-  (AES-256) and in transit (TLS). Vercel serves over HTTPS (INV-012). AI providers receive the
+  (AES-256) and in transit (TLS). Both deployed apps must serve over HTTPS (INV-012). AI providers receive the
   upload only for the duration of the call; what each does with it is set by its terms
   (`feasibility.md` §4).
 - **Who can see it:** only the owner who created it. Every server route checks the session, then
@@ -254,13 +357,15 @@ it, and what happens to it after the hackathon.*
   against that bot's secret, both compared in constant time. The owner is taken only from the
   matching connection row. Meta's login uses a one-time `state` value so a connection can't be
   attached to someone else's account.
-- **How long raw chats live:** deleted on confirm, discard, "no order found," or disconnect, and
-  by the hourly job before 7 days (INV-001). Order fields stay until the owner deletes their account — the
-  deletion flow is an open question (`prd.md` §10).
+- **How long raw chats live:** deleted on confirm/discard (source-batch resolution for shared
+  sources), "no order found," disconnect, or logbook deletion, and by the hourly job before
+  7 days (INV-001, ADR-013). Copied evidence follows the same rule. Order fields stay until
+  Delete my logbook; account deletion remains a separate open question (`prd.md` §10).
 - **Secrets:** the Supabase service key, AI provider keys, the job secret, the Meta app secret and
   webhook verify token live only in server environment variables; Page and bot tokens live only
   in `channel_secrets`. None are ever in client code, `NEXT_PUBLIC_` variables, or the repo. The
-  browser gets only Supabase's public key, which is safe because row-level security is on for every table
+  browser gets only Supabase's public key for Auth; product tables and private Storage are
+  accessed through the backend, with row-level security on every table
   (INV-AS-002).
 - **Untrusted chat content:** chat text is passed to the AI as data; the AI's output is validated
   against the BR-002 fields before anything is saved; database access goes through the Supabase
@@ -288,11 +393,11 @@ section makes your feasibility.md's "go-with-cuts" verdict concrete.*
 | Telegram: customers message the shop bot, and the owner can't reply from their own Telegram app | Bot API design; Telegram Business connected bots would let the owner reply from their own account, and the Bot API 10.0 changelog (May 2026) says "Secretary Bots" no longer need Premium `[verify this covers our case]` | Decide after testing whether to support connected bots or keep bot-only |
 | Way 1 reads text only; photos (such as GCash receipts), voice notes, and stickers are skipped | Keeps the AI call text-only and cheap `[proposed]` | Add image messages if sellers ask |
 | Way 1 extraction runs after the webhook answer, inside the same function call | No job queue | A queue if bursts of messages pile up or calls time out |
-| Messages sent while Supabase is paused or Vercel is down may be lost after the platform stops retrying `[verify each platform's retry window]` | Free tiers; no queue | Keep the project awake before demos; paid plans for real use |
+| Messages sent while Supabase or the backend is down may be lost after the platform stops retrying `[verify each platform's retry window]` | Free tiers; no queue | Keep both services ready before demos; paid plans for real use |
 | Vercel Hobby is non-commercial and Meta App Review expects a stable public app | ₱0 budget | Paid hosting before real sellers connect |
 | Customer matching for F-005 is by exact name (ignoring capitals and spaces) | Simple and predictable; the owner always confirms (INV-006) | Better matching only if the pilot shows misses |
 | No audit or access log | INV-014 waived (ADR-006) | Revisit if the Data Privacy Act review finds a processing record is needed |
-| No account or data deletion flow | Open question (`prd.md` §10) | A self-service delete that removes all of the owner's rows and files |
+| Account deletion remains unspecified; logbook deletion is accepted but unbuilt | ADR-013 retains login/profile while clearing the logbook and disconnecting channels | Implement logbook cleanup with retry and write fencing; decide account deletion separately |
 | Daily AI cap value unknown (uploads plus connected-account extractions) | Depends on the spike's measured AI quota use | Set the cap from measured numbers |
 | Image size and per-upload limits are proposals | Not yet measured | Tune after the spike |
 

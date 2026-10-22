@@ -39,7 +39,7 @@ only** (INV-011).
 | F-003 | TC-016 | Confirm / edit shows in the logbook without a page refresh | Manual | not run |
 | F-003 | TC-017 | Drafts awaiting review counted separately from confirmed orders | Auto + Manual | not run |
 | F-003 | TC-018 | First-time empty state; "no orders match" state for an empty filter | Manual | not run |
-| F-003 | TC-019 | Logbook can't load (offline) → error state with retry | Manual | not run |
+| F-003 | TC-019 | Offline → read-only cached logbook with freshness; no cache → error with retry; reconnect reloads | Manual | not run |
 | F-004 | TC-020 | Sales today / this week / this month match a hand-computed fixture, including Asia/Manila day and Monday-week boundaries | Auto | not run |
 | F-004 | TC-021 | Orders by status counted per BR-003 (paid and delivered can overlap) | Auto | not run |
 | F-004 | TC-022 | Unpaid amount per BR-007; orders without a total excluded and counted separately | Auto | not run |
@@ -66,6 +66,13 @@ only** (INV-011).
 | F-006 | TC-043 | Connected-account extractions count against the daily AI cap; at the cap, the conversation shows why it wasn't read | Auto | not run |
 | F-003 | TC-044 | Live connection dropped → "not live" notice; reloads on reconnect or focus | Manual | not run |
 | F-003 | TC-045 | Every order shows its source (BR-009) | Auto + Manual | not run |
+| F-001, F-002 | TC-046 | Optional unit prices round-trip; complete prices compute total; total-only chat keeps null item prices; zero differs from null | Auto | not run |
+| F-001, F-002 | TC-047 | Conflicting stated/calculated total requires seller resolution; absent payment remains not_stated | Auto + Manual | not run |
+| F-001, F-002 | TC-048 | Owner can review temporary source and matched field evidence; unmatched highlights omitted; other owner denied; evidence removed with source | Auto + Manual | not run |
+| F-002 | TC-049 | Several drafts share one source: resolve as a batch; source remains available until resolution or original expiry; partial cleanup retries safely | Auto + Manual | not run |
+| F-002, F-006 | TC-050 | Delete my logbook removes orders/raw/evidence/credentials and disconnects channels; login/profile survive; another owner's data survives | Auto + Manual | not run |
+| F-002, F-006 | TC-051 | In-flight extraction and late webhook cannot recreate data during logbook deletion; storage/unsubscribe failures are retryable without false success | Auto | not run |
+| F-003, F-007 | TC-052 | Cached logbook isolated by owner, cleared on sign-out/account switch/deletion; stale other-device cache invalidated on next contact; no raw evidence cached | Auto + Manual | not run |
 
 | INV-### | TC-N## | Negative test summary | Type | Status |
 |---|---|---|---|---|
@@ -187,8 +194,9 @@ drafts to review" shows separately; the list shows three. *Verify:* query test +
 **TC-018** — *Given* a new account; then a filter with no matches. *Then* the first-time empty
 state, then "No orders match" with a way to clear the filter. *Verify:* manual.
 
-**TC-019** — *Given* the phone is offline. *When* the logbook opens. *Then* an error state with
-Try again; it loads once back online. *Verify:* manual (browser offline mode).
+**TC-019** — *Given* the phone is offline. *When* the logbook opens with an owner-specific cache,
+show the last loaded orders and freshness time; mutations are disabled and never queued. Without
+a cache, show an error with Try again. Reload on reconnect. *Verify:* browser offline mode (ADR-013).
 
 ### F-004 — Sales totals and statistics
 
@@ -198,12 +206,13 @@ and not today; the second counts today and this week (BR-004). *Verify:* statist
 test with fixed timestamps.
 
 **TC-021** — *Given* orders in each state. *Then* counts: needs review (drafts), awaiting payment
-(confirmed, unpaid or not stated), paid, delivered; one paid-and-delivered order counts in both.
+(confirmed, explicitly unpaid), payment unknown (confirmed, not stated), paid, delivered;
+one paid-and-delivered order counts in both.
 *Verify:* statistics test.
 
 **TC-022** — *Given* unpaid orders of ₱300 and ₱200, one "not stated" of ₱100, and one unpaid with
-no total. *Then* unpaid amount ₱600.00, plus "1 order has no price yet." *Verify:* statistics
-test.
+no total; the ₱200 unpaid order is delivered. *Then* unpaid amount ₱500.00, unknown-payment
+count 1, and "1 order has no price yet." Delivery does not remove debt. *Verify:* statistics test.
 
 **TC-023** — *Given* items "Ube Jam" ×2, "ube  jam" ×3, "ube jam 250g" ×4. *Then* top items:
 "ube jam" 5 first, then "ube jam 250g" 4. *Verify:* statistics test.
@@ -303,6 +312,8 @@ includes them in the name → cleaned; eval search of every saved field.
 
 **TC-N02 (INV-001)** — After confirm, discard, and no-order: Storage list for that upload's
 folder is empty and `raw_text` is null. *Verify:* route tests checking Storage through its API.
+For shared sources, confirm/discard means resolution of the entire source batch (ADR-013,
+TC-049); copied review evidence is also removed. Unresolved batches retain the original expiry.
 
 **TC-N03 (INV-001)** — Uploads back-dated 6 d 22 h and 6 d 23 h 30 min. After the job: the first
 stays, the second is gone. Running the job twice does no harm. *Verify:* route test.
@@ -437,7 +448,7 @@ the code and design are honest and safe. Do not start demo-day checks with an op
 
 | Gap | Why | Mitigation until fixed |
 |---|---|---|
-| No test runner or Verify commands yet | Nothing is built; build is blocked until the founder's design exists (ADR-010) | The first build packet picks the runner and writes real Verify commands for the "Auto" tests |
+| Backend verification commands not yet pinned | Frontend Vitest exists; design gate is founder-owned (ADR-013), but backend cases remain unimplemented | Each backend packet must name runnable checks; new QA rows remain not run |
 | AI results vary between runs | Model output isn't fixed | Score over the whole set (TC-008) and re-run after any instruction change; unit tests stub the AI reply |
 | Real seller chats are never tested | INV-011 — synthetic only until the `feasibility.md` §4 gate | The synthetic set must cover real-looking Taglish, typos, and blurry screenshots; behaviour on real chats stays unknown (A-003, A-005) |
 | The hourly job's real schedule isn't tested in a test run | Waiting hours isn't practical | Test the job route with back-dated rows (TC-014, TC-N03); check the Cron run history once deployed |

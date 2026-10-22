@@ -319,6 +319,38 @@ happening twice, and shows judges the thinking wasn't accidental.*
     accounts; for connected business accounts the copy may say messages "arrive on their own."
 - **Date:** 2026-10-08
 
+### ADR-013: Prototype reference and six backend contract decisions
+- **Context:** The founder shared the MabiList Make prototype on 2026-10-23 and accepted all six recommendations after comparing its behavior with the current specs. Source: founder approval in this chat; prototype: https://www.figma.com/make/ekR2zUP2Glr5Gl7z0I1Wal/Prototype-MabiList-PWA . Prototype behavior is simulated, not evidence of a working backend.
+- **Decision** [founder, 2026-10-23]:
+  1. Store nullable item unit prices and a nullable order total. Compute quantity × unit price when every item is priced; otherwise use an explicitly stated total or leave it unknown. Conflicting stated/calculated totals require seller resolution; zero is not unknown.
+  2. Keep `not_stated`, `unpaid`, and `paid`. Only explicitly unpaid confirmed orders contribute to amount owed, including delivered orders; unknown payment gets a separate count. This supersedes BR-003/BR-007's inclusion of unknown payment in unpaid figures.
+  3. Return temporary source previews and validated field-evidence references for draft review. Delete copied evidence with its source. Resolve drafts sharing one upload as a batch before deleting the source; the original seven-day expiry never extends. This explicitly amends INV-001's per-entry deletion trigger for shared sources.
+  4. Delete my logbook removes orders, drafts, raw content, and review data and disconnects channels/removes their credentials, while retaining login and shop profile. Block incoming processing before cleanup; do not allow in-flight work to recreate deleted data. Account deletion remains separate.
+  5. Offline access is read-only to the last successfully loaded logbook, with a last-updated time. No offline mutation queue. Clear cached shop data on sign-out; do not cache raw chat evidence. Offline copy must not imply queued changes.
+  6. Monetary period totals use confirmation date in Asia/Manila, Monday-start weeks; due-date views use delivery date. Ask the designer to consider clearer confirmation-based labels; no visual redesign is authorized.
+- **Design gate:** The founder-supplied prototype establishes a founder-owned design reference. Record it in `design-brief.md` and open PH-01; this does not mark existing frontend work complete.
+- **Consequences:** Reconcile PRD, SDD, design inputs, QA cases, and task scopes before implementation. The prototype's item-price/payment controls and deletion/offline behavior require contract changes. Existing code/types remain unchanged in this documentation pass. HTTP transport details, auth verification behavior, and exact evidence serialization still need an implementation contract; the six decisions do not settle those details or change the selected stack.
+- **Date:** 2026-10-23
+
+### ADR-014: Separate frontend and backend directories without a shared package
+- **Context:** The contract work in TASK-022 lives partly under `web/`, while the founder wants
+  frontend and backend developers to work in separate directories and merge their work cleanly.
+  The earlier stack choice placed server routes inside the Next.js app.
+- **Decision** [founder, 2026-10-23]: Keep `web/` for the Next.js frontend and its local API
+  adapter/mock; create an independently runnable `backend/` for server code and all product-data
+  reads and writes. The frontend may use Supabase Auth for sign-in, but screens and the adapter
+  will not query product tables or private Storage directly. Do not create a `shared/` package.
+  `docs/sdd.md` is the agreed HTTP contract; each side owns its own types and changes the
+  contract deliberately when request or response shapes change.
+- **Consequences:** The backend needs its own deployment and a same-origin `/api` routing plan
+  before live integration. The existing frontend mock stays usable during backend work. The
+  original Option A score assumed a single Next.js deployment and is now historical; hosting,
+  auth transport, and deployment cost must be checked before shipping. ADR-012's direct
+  browser Supabase Realtime subscription is superseded; the backend must deliver owner-scoped
+  notifications or another live update path, with reload on focus as fallback. TASK-022's
+  contract work is preserved, and a separate structure packet tracks this migration.
+- **Date:** 2026-10-23
+
 ### ADR-00N: {title}
 - **Context:** {...}
 - **Decision:** {...}
@@ -332,6 +364,9 @@ didn't change — this is the audit trail a judge or future teammate would want 
 
 | Date | INV-### | Change made | Still holds? |
 |---|---|---|---|
+| 2026-10-23 | INV-001 | ADR-013: shared-source drafts resolve as a batch; evidence follows raw-source deletion and the original seven-day expiry; logbook deletion removes raw content | amended deletion trigger — design only, not implemented |
+| 2026-10-23 | INV-002, INV-003 | ADR-013: optional unit prices, seller-resolved discrepancies, unknown payment separated from owed totals | retained — design only, not implemented |
+| 2026-10-23 | INV-AS-001, INV-008 | ADR-013: owner-scoped offline cache, sign-out clearing, freshness labels, and deletion fencing | retained — design only, not implemented |
 | 2026-10-07 | INV-001 | Created (ADR-002): raw chats/screenshots deleted after the entry is confirmed; logbook keeps order fields only | yes — design only, not yet built |
 | 2026-10-07 | INV-002 | Created: unconfirmed or price-less entries never counted in totals (F-002, F-004) | yes — design only, not yet built |
 | 2026-10-07 | INV-003 | Created: AI never fills in a value not present in the chat (F-001) | yes — design only, not yet built |

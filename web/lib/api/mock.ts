@@ -6,15 +6,29 @@
 
 import { addDays, todayManila } from "../format";
 import type {
+  ApiErrorCode,
+  DraftResolution,
   ExtractionInput,
   ExtractionResult,
+  FieldEvidence,
   Order,
   OrderInput,
+  ResolveDraftBatchResponse,
   Session,
   Upload,
 } from "../types";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: ApiErrorCode = "INTERNAL_ERROR",
+    readonly status = 500,
+    readonly fields?: Record<string, string>,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 /** True while screens run on this mock; turns on the design's "sample input states" panel. */
 export const IS_MOCK = true;
@@ -22,7 +36,6 @@ export const IS_MOCK = true;
 /** Forces an extraction outcome; used by the "View sample input states" panel in the design. */
 export type SimulatedOutcome = "unreadable" | "no_order" | "failed" | "several";
 
-const OWNER = "mock-owner";
 const SESSION_KEY = "mabilist.mock-session";
 const READING_DELAY_MS = 1200;
 
@@ -35,7 +48,6 @@ function makeOrder(input: OrderInput, extra: Partial<Order>): Order {
   const orderId = id("order");
   return {
     id: orderId,
-    owner_id: OWNER,
     upload_id: null,
     source: "manual",
     state: "confirmed",
@@ -50,7 +62,7 @@ function makeOrder(input: OrderInput, extra: Partial<Order>): Order {
     confirmed_at: nowIso(),
     created_at: nowIso(),
     updated_at: nowIso(),
-    items: input.items.map((i) => ({ id: id("item"), order_id: orderId, ...i })),
+    items: input.items.map((i) => ({ id: id("item"), order_id: orderId, ...i, unit_price_php: i.unit_price_php ?? null })),
     ...extra,
   };
 }
@@ -69,7 +81,7 @@ function seed(): Order[] {
     makeOrder(
       {
         customer_name: name,
-        items: [{ name: item, quantity: qty }],
+        items: [{ name: item, quantity: qty, unit_price_php: null }],
         total_php: total,
         delivery_date: addDays(t, inDays),
         payment_status: paid ? "paid" : "unpaid",
@@ -87,7 +99,7 @@ function seed(): Order[] {
     makeOrder(
       {
         customer_name: "Lyn Ramos",
-        items: [{ name: "Brownie box", quantity: 2 }],
+        items: [{ name: "Brownie box", quantity: 2, unit_price_php: null }],
         total_php: null,
         delivery_date: addDays(t, 1),
         payment_status: "not_stated",
@@ -107,7 +119,7 @@ let orders: Order[] = seed();
 
 function findOrder(orderId: string): Order {
   const order = orders.find((o) => o.id === orderId);
-  if (!order) throw new ApiError("We couldn't find that order. It may have been deleted.");
+  if (!order) throw new ApiError("We couldn't find that order. It may have been deleted.", "NOT_FOUND", 404);
   return order;
 }
 
@@ -139,7 +151,7 @@ export async function signIn(email: string, password: string): Promise<Session> 
   await wait(400);
   // Mock rule so the error state can be seen: passwords shorter than 8 characters are rejected.
   if (!email.includes("@") || password.length < 8) {
-    throw new ApiError("That email or password doesn’t look right. Try again.");
+    throw new ApiError("That email or password doesn’t look right. Try again.", "UNAUTHENTICATED", 401);
   }
   const session = { email, shop_name: readSession()?.shop_name ?? "Mila’s Home Bakery" };
   writeSession(session);
@@ -148,9 +160,9 @@ export async function signIn(email: string, password: string): Promise<Session> 
 
 export async function signUp(shopName: string, email: string, password: string): Promise<Session> {
   await wait(400);
-  if (password.length < 8) throw new ApiError("Use at least 8 characters for your password.");
+  if (password.length < 8) throw new ApiError("Use at least 8 characters for your password.", "VALIDATION_ERROR", 400, { password: "Use at least 8 characters." });
   if (email.trim().toLowerCase() === "taken@example.com") {
-    throw new ApiError("An account with that email already exists. Sign in instead.");
+    throw new ApiError("An account with that email already exists. Sign in instead.", "CONFLICT", 409, { email: "An account with that email already exists." });
   }
   const session = { email, shop_name: shopName };
   writeSession(session);
@@ -212,7 +224,7 @@ export async function updateOrder(
     ...current,
     ...patch,
     items: patch.items
-      ? patch.items.map((i) => ({ id: id("item"), order_id: orderId, ...i }))
+      ? patch.items.map((i) => ({ id: id("item"), order_id: orderId, ...i, unit_price_php: i.unit_price_php ?? null }))
       : current.items,
     updated_at: nowIso(),
   };
@@ -224,9 +236,41 @@ export async function updateOrder(
 export async function discardDraft(orderId: string): Promise<void> {
   await wait(250);
   if (findOrder(orderId).state !== "draft") {
-    throw new ApiError("Only drafts can be deleted.");
+    throw new ApiError("Only drafts can be deleted.", "CONFLICT", 409);
   }
   orders = orders.filter((o) => o.id !== orderId);
+}
+
+/** Resolves every draft tied to one source before that source can be removed. */
+export async function resolveDraftBatch(
+  uploadId: string,
+  resolutions: DraftResolution[],
+): Promise<ResolveDraftBatchResponse> {
+  await wait(300);
+  const drafts = orders.filter((order) => order.upload_id === uploadId && order.state === "draft");
+  const requestedIds = resolutions.map((resolution) => resolution.order_id).sort();
+  const draftIds = drafts.map((draft) => draft.id).sort();
+  if (!drafts.length || requestedIds.length !== draftIds.length || requestedIds.some((id, i) => id !== draftIds[i])) {
+    throw new ApiError("Review every draft from this source before resolving it.", "CONFLICT", 409);
+  }
+
+  const confirmed_orders = resolutions.flatMap((resolution) => {
+    if (resolution.action !== "confirm") return [];
+    const draft = drafts.find((order) => order.id === resolution.order_id)!;
+    return [makeOrder(resolution.values, {
+      id: draft.id,
+      source: draft.source,
+      upload_id: null,
+      not_in_chat: [],
+      expires_at: null,
+    })];
+  });
+  const discarded_order_ids = resolutions
+    .filter((resolution) => resolution.action === "discard")
+    .map((resolution) => resolution.order_id);
+  const resolvedIds = new Set(requestedIds);
+  orders = [...orders.filter((order) => !resolvedIds.has(order.id)), ...confirmed_orders];
+  return { confirmed_orders, discarded_order_ids };
 }
 
 // --- Extraction (POST /api/extractions) ---
@@ -235,7 +279,6 @@ function makeUpload(kind: Upload["kind"], status: Upload["status"], reason: stri
   const created = nowIso();
   return {
     id: id("upload"),
-    owner_id: OWNER,
     kind,
     status,
     failure_reason: reason,
@@ -278,10 +321,10 @@ export async function createExtraction(
       upload,
       {
         customer_name: null,
-        items: [{ name: "Brownie box", quantity: 2 }],
+        items: [{ name: "Brownie box", quantity: 2, unit_price_php: null }],
         total_php: null,
         delivery_date: tomorrow,
-        payment_status: "paid",
+        payment_status: "not_stated",
       },
       ["customer_name", "total_php"],
     ),
@@ -292,7 +335,7 @@ export async function createExtraction(
         upload,
         {
           customer_name: null,
-          items: [{ name: "Leche flan", quantity: 1 }],
+          items: [{ name: "Leche flan", quantity: 1, unit_price_php: null }],
           total_php: null,
           delivery_date: null,
           payment_status: "not_stated",
@@ -302,7 +345,11 @@ export async function createExtraction(
     );
   }
   orders = [...orders, ...drafts];
-  return { status: "draft_ready", upload, drafts };
+  const field_evidence: FieldEvidence[] = [];
+  const source_preview = input.kind === "text"
+    ? { upload_id: upload.id, kind: "text" as const, text: input.text, expires_at: upload.expires_at }
+    : { upload_id: upload.id, kind: "image" as const, preview_path: `/api/uploads/${upload.id}/source`, expires_at: upload.expires_at };
+  return { status: "draft_ready", upload, drafts, source_preview, field_evidence };
 }
 
 /** Test hook: restores the seeded sample data. */

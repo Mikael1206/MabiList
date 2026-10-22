@@ -97,7 +97,13 @@ feature is later cut (mark it `cut` in `decision-ledger.md` instead of deleting 
   - WHEN the owner discards a draft, the system SHALL delete the draft and its raw screenshot or
     text (INV-001).
   - WHEN an entry is confirmed or discarded, the system SHALL delete its raw screenshot or text
-    immediately (INV-001).
+    immediately (INV-001). Drafts sharing one source are reviewed and resolved as one batch;
+    delete that source when the batch resolves, without extending its original seven-day expiry (ADR-013).
+  - WHEN reviewing a draft, the system SHALL show temporary source content and highlight only
+    evidence matched to that source; copied evidence expires and is deleted with the raw content.
+  - WHEN the owner confirms Delete my logbook, the system SHALL stop incoming processing,
+    disconnect channels, remove their credentials, and delete orders, drafts, raw content, and
+    review data while retaining login and shop profile (ADR-013; founder-approved scope, `[assumption]` of seller need).
   - WHEN a draft is neither confirmed nor discarded within 7 days of upload, the system SHALL
     delete its raw screenshot or text automatically (INV-001, ADR-007) and tell the owner the
     draft expired.
@@ -126,8 +132,11 @@ feature is later cut (mark it `cut` in `decision-ledger.md` instead of deleting 
     confirmed orders.
   - WHEN the owner has no orders yet, the system SHALL show an empty state that explains how to add
     the first one.
-  - WHEN the logbook can't load, the system SHALL show an error state with a retry option.
-- **Out of scope for this feature:** calendar views; reminders or notifications.
+  - WHEN offline with a previously loaded logbook, the system SHALL show the owner-scoped cached
+    list and last-updated time, disable mutations, and explain that changes require a connection.
+    Without cached data, show an error with retry. Never persist raw chat evidence in this cache.
+  - WHEN signing out, the system SHALL clear cached shop data (ADR-013).
+- **Out of scope for this feature:** offline writes or queued changes; calendar views; reminders or notifications.
 
 ### F-004 — Sales totals and statistics
 
@@ -243,27 +252,32 @@ F-001–F-005 and F-007. Updated in `seed/idea.md` §7 before this document.*
 - **BR-001 — Entry states.** Every entry is a **draft** (needs review) or **confirmed**. Only
   confirmed entries appear in the logbook's order list and in totals. A discarded draft is
   deleted, not kept as a third state.
-- **BR-002 — Fields kept.** An entry has: customer display name; items (name and quantity for
-  each); order total price; delivery date; payment status; delivery status. Nothing else about the
+- **BR-002 — Fields kept.** An entry has: customer display name; items (name, quantity, and nullable
+  unit price for each); nullable order total price; delivery date; payment status; delivery status. Nothing else about the
   customer is stored unless the owner types it in (INV-001). The AI may fill all fields except
   delivery status, which starts as "pending" and is changed by the owner (or proposed by the AI
   from a later chat and confirmed by the owner, F-005).
 - **BR-003 — Statuses.** Payment status: **unpaid**, **paid**, or **not stated** (when the chat
   doesn't say — INV-003). Delivery status: **pending** or **delivered**. The "orders by status"
-  counts in F-004 are: needs review (drafts), awaiting payment (confirmed, unpaid or not stated),
-  paid, and delivered. An order can be counted as both paid and delivered.
+  counts in F-004 are: needs review (drafts), awaiting payment (confirmed, explicitly unpaid),
+  payment unknown (confirmed, not stated), paid, and delivered. Missing payment never defaults
+  to unpaid. An order can be counted as both paid and delivered (ADR-013).
 - **BR-004 — Sales date.** An order counts toward "today / this week / this month" on the day it
   was **confirmed** in the logbook, in Asia/Manila time (ADR-007). Weeks run Monday to Sunday
-  `[proposed]`.
+  (accepted, ADR-013). Delivery-date views remain separate from confirmation-date totals.
 - **BR-005 — Order total.** The AI fills the order total only if the chat states it, or states a
   price for every item (then it adds them up). Otherwise the total stays empty (INV-003) and the
   order is left out of totals (INV-002) until the owner adds a price. Amounts are in Philippine
-  pesos. `[assumption — how sellers state prices is checked in interviews]`
+  pesos. Store optional unit prices as well as the order total; compute quantity × unit price
+  for each item when all prices are known. A stated total that conflicts with that calculation
+  must be resolved by the seller before confirmation, never silently overwritten. Zero is a
+  valid price and is distinct from unknown (ADR-013).
 - **BR-006 — Top-selling items.** Ranked by total quantity across confirmed orders in the chosen
   period. Item names are compared ignoring capitals and extra spaces; other differences ("ube jam"
   vs. "ube jam 250g") count as different items, and the owner can edit names to merge them.
 - **BR-007 — Unpaid amount.** The sum of order totals of confirmed orders whose payment status is
-  unpaid or not stated. Orders with no total are excluded and counted separately (INV-002).
+  explicitly unpaid, including delivered orders. Unknown payment is counted separately and adds
+  nothing to amount owed. Orders with no total are excluded and counted separately (INV-002, ADR-013).
 - **BR-008 — Open order (for F-005 matching).** A confirmed order whose delivery status is pending,
   or whose payment status isn't paid.
 - **BR-009 — Order source.** Every entry records where it came from: screenshot, pasted text,
@@ -285,7 +299,9 @@ stay listed so nobody reuses them.*
 
 - **INV-001 — data minimization:** the system SHALL NEVER keep a raw chat screenshot, pasted
   text, or message received from a connected account after the owner has confirmed or discarded
-  the entry built from it, or for more than 7 days after it arrived if neither happens; and SHALL
+  the entry built from it (or resolved the batch of drafts sharing that source), or for more than
+  7 days after it arrived if neither happens. Copied review evidence follows the same lifecycle;
+  batch review never resets expiry (ADR-013). The system SHALL
   NEVER store a customer's phone number or address unless the owner types it in (ADR-002, ADR-007,
   ADR-012).
 - **INV-002 — honest totals:** the system SHALL NEVER count a draft, or a confirmed entry with no
@@ -399,8 +415,8 @@ which goes stale the moment someone reads this later.*
 - How do sellers state prices — per item, as a total, or both? (BR-005)
 - How often does one screenshot hold more than one order? (F-001)
 - Is the 30-second draft target acceptable to sellers? (§6)
-- Should the owner be able to delete their account and all their data in the MVP? Likely relevant
-  to RA 10173 — `feasibility.md` to advise.
+- Account deletion remains open; Delete my logbook is accepted in ADR-013 and retains the login
+  and shop profile. These are distinct actions.
 - **Telegram reply path (F-006):** customers message the shop bot, so the owner can't reply from
   their own Telegram app. Telegram Business connected bots may solve this; the Bot API 10.0
   changelog (May 2026) says "Secretary Bots" no longer need Telegram Premium `[verify this covers
