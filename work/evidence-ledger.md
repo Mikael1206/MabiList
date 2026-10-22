@@ -11,7 +11,43 @@
 > scoring below. If you searched and found nothing, write `unknown — not found` rather than
 > skipping the row.
 
-**Last updated:** 2026-10-07
+**Last updated:** 2026-10-23
+
+## TASK-001 synthetic extraction spike
+
+The 30 invented Taglish chat fixtures and labeled fields are in `backend/eval/fixtures.mjs`.
+The local scorer checks six field groups, including unknown values, and provider request timing.
+**No reliable full-set provider comparison has been measured yet.** *(Update 2026-10-23:
+Gemini 3.8 Flash initially returned HTTP 503. With an explicit order schema, Gemini 3.6 Flash
+returned a valid response for the one-case check in 6.6 seconds (50% overall, 25% key fields,
+zero guesses). On the full 30-fixture run, the required evaluator score was 31.7% overall and
+25.8% key fields, with 17 failed cases, zero guesses, median 3.6 seconds and slowest 8.1
+seconds. Six requests returned HTTP 503 (high demand) and eleven returned HTTP 429 (free-tier
+quota). The 13 usable replies alone scored 73.1% overall and 59.6% key fields; this is a
+diagnostic subset only, not the acceptance score, because unavailable cases are excluded. The
+strict scorer also treats item-name mismatches such as `banana loaves` vs `banana loaf` as
+incorrect and marks associated quantity and price fields incorrect. Cloudflare Llama 3.2 Vision
+returned prose on its single-case test despite a schema request. On 2026-10-23, the OCR-first
+run used local Tesseract with English and Tagalog models plus Cloudflare
+`@cf/meta/llama-3.3-70b-instruct-fp8-fast`: a one-case smoke test scored 100% overall/key with
+no guesses or invalid replies. The first 15 fixtures scored 71.1% overall and 58.3% key fields,
+with three guessed values, no failed/invalid replies, 98.7% mean OCR character accuracy, 3.5 s
+median and 5.1 s slowest total time. Date and payment-status fields were 100%; item, quantity,
+and price groups were 53.3%, 46.7%, and 33.3%. The 15-case run is below the 80% key-field line
+and is not a full-set acceptance result. A later one-case Gemini OCR-first retry, using the
+updated API key, returned HTTP 503 (high demand) after 6.5 seconds; OCR accuracy was 98.9%,
+but no extraction was returned and no 30-case retry was run. No candidate has cleared
+acceptance. On 2026-10-23, the Hugging Face Inference Providers adapter was added for the
+Qwen/Qwen3-8B OCR-text candidate after ADR-015. Its one-case smoke test measured 98.9% OCR
+character accuracy, then received HTTP 402 in 1.8 seconds; no extraction was scored and the
+conditional 15-case evaluation was not run. The evaluator output contained no provider message,
+so whether this reflects unavailable credits, billing setup, or another account restriction is
+unknown. On 2026-10-23, the founder-replaced Gemini key was retried against the first OCR fixture:
+OCR scored 98.9%, but Gemini returned HTTP 500 (`Internal error encountered`) in 2.7 seconds.
+No extraction was scored, so the conditional 30-case run was not started. No candidate has
+cleared acceptance.)* The provider
+choice and full upload-to-draft timing remain `unknown`. These synthetic fixtures are test
+material, not evidence about actual sellers or real-chat accuracy.
 
 ## Evidence log
 

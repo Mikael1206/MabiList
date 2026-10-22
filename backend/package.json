@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
-    "check": "node --check src/server.mjs && node --check src/session.mjs",
-    "test": "node --test src/*.test.mjs"
+    "check": "node --check src/server.mjs && node --check src/session.mjs && node --check src/extract-orders.mjs && node --check eval/run.mjs && node --check eval/run-ocr.mjs && node --check eval/ocr.mjs && node --check eval/render-fixtures.mjs",
+    "test": "node --test src/*.test.mjs eval/*.test.mjs",
+    "eval:fixtures": "node eval/render-fixtures.mjs && bash eval/convert-fixtures.sh",
+    "eval": "node --env-file=.env eval/run.mjs",
+    "eval:ocr": "node --env-file=.env eval/run-ocr.mjs"
   }
 }

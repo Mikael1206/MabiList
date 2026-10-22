@@ -351,6 +351,18 @@ happening twice, and shows judges the thinking wasn't accidental.*
   contract work is preserved, and a separate structure packet tracks this migration.
 - **Date:** 2026-10-23
 
+<<<<<<< HEAD
+### ADR-015: Add Hugging Face Inference Providers as an evaluation candidate
+- **Context:** TASK-001's current Gemini and Cloudflare candidates have not cleared the key-field accuracy rethink line. The founder requested a test of Hugging Face-hosted open models using the existing OCR-first pipeline.
+- **Decision** [founder, 2026-10-23]: Add a server-side Hugging Face Inference Providers adapter for synthetic OCR transcripts, starting with `Qwen/Qwen3-8B`. Keep the token in the ignored backend environment file. This is an evaluation-only candidate; it does not change the production-provider decision in ADR-008 or authorize real customer data.
+- **Consequences:** Extend TASK-001's documented scope and evaluate on the existing synthetic fixtures using the same scorer. Hugging Face routes inference through participating providers and may incur charges beyond any account credits; check billing before increasing test size.
+- **Date:** 2026-10-23
+
+### ADR-016: Use Cloudflare Llama 3.3 for the next synthetic demo iteration
+- **Context:** Gemini did not return a valid extraction on the latest one-case OCR-first retry (HTTP 500). Hugging Face/Qwen3-8B returned HTTP 402. Cloudflare's OCR-first Llama 3.3 70B path returned valid JSON for all 15 tested fixtures, but scored 71.1% overall and 58.3% on key fields, with three guessed values—below TASK-001's 80% key-field rethink line.
+- **Decision** [founder, 2026-10-23]: Use Cloudflare Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` after local Tesseract OCR for the next synthetic demo iteration. This is a practical demo-path choice, not evidence that the extractor meets the accuracy target or is ready for real seller chats. Keep extraction reviewable and do not change INV-011's real-data gate.
+- **Consequences:** Keep TASK-001 in progress and show extraction as a draft requiring seller review. Continue to use only synthetic data until the accuracy and privacy gates are cleared. The direct image path using Llama 3.2 Vision is not the selected path.
+=======
 ### ADR-015: Visual source is the Figma design file; the Make prototype is the flow reference
 - **Context:** ADR-013 recorded the Figma Make prototype as the founder-owned design. The
   frontend in `web/` was built from the static Figma design file
@@ -368,6 +380,7 @@ happening twice, and shows judges the thinking wasn't accidental.*
   prototype shows, the gap goes to An-joe instead of copying the prototype's look. TASK-022 keeps
   its current scope (the API contract); the screens built on 2026-10-22 (Totals, Settings, chat
   excerpt, delete order, order updates) are recorded under TASK-021.
+>>>>>>> main
 - **Date:** 2026-10-23
 
 ### ADR-00N: {title}

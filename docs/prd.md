@@ -377,7 +377,7 @@ one is unavailable during the demo.*
 
 | Dependency | Status | Fallback if unavailable |
 |---|---|---|
-| AI model that reads images and text, on a free tier | planned — chosen by the accuracy spike between Gemini and Cloudflare Workers AI; Gemini's free tier gets synthetic chats only (ADR-008, `feasibility.md` §3–§4) | The owner fills in the entry by hand (F-002); the demo shows the error state honestly rather than a fake result |
+| AI model that reads images and text | planned — OCR-first Cloudflare Workers AI Llama 3.3 selected for the next synthetic demo iteration (ADR-016); 15-case key-field accuracy remains below target. Gemini's free tier gets synthetic chats only (ADR-008, `feasibility.md` §3–§4) | The owner reviews and corrects the draft (F-002); provider failures show an error and the owner can enter the order by hand |
 | Database with sign-in and live updates, on a free tier | planned — Supabase, including Realtime for F-006 drafts (ADR-008, ADR-012, `stack-decision.md`) | Live updates: the logbook refreshes on demand instead |
 | Web hosting, free tier | planned — Vercel Hobby, non-commercial use only (ADR-009, `sdd.md`) | Run the demo locally — but webhooks need a public HTTPS URL, so F-006 can't be demoed locally without a tunnel `[verify]` |
 | Meta app (Messenger Platform, Instagram messaging) | planned — F-006, MVP (ADR-012). Development mode works only on Pages where the team has a role; real sellers' Pages need App Review and possibly business verification `[verify]` | Demo on the team's own test Page; if review is slow, F-006 stays test-Page-only and Way 2 carries the pilot |
