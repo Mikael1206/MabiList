@@ -351,6 +351,25 @@ happening twice, and shows judges the thinking wasn't accidental.*
   contract work is preserved, and a separate structure packet tracks this migration.
 - **Date:** 2026-10-23
 
+### ADR-015: Visual source is the Figma design file; the Make prototype is the flow reference
+- **Context:** ADR-013 recorded the Figma Make prototype as the founder-owned design. The
+  frontend in `web/` was built from the static Figma design file
+  (https://www.figma.com/design/2QHsLrO5ElGW2RpWUBjQ96/Mabilist), and the two differ in layout
+  and copy.
+- **Decision** [Yancy for the team, 2026-10-23]:
+  1. **Visual design source:** the static Figma design file — layout, components, copy, colours,
+     type and spacing for every screen.
+  2. **Flow reference:** the Figma Make prototype
+     (https://www.figma.com/make/ekR2zUP2Glr5Gl7z0I1Wal/Prototype-MabiList-PWA) — which screens
+     exist and how a seller moves between them. Its visuals are not copied.
+  3. ADR-013's six contract decisions are unchanged.
+- **Consequences:** `design-brief.md` §0 records both links with these roles. UI packets follow
+  the design file for pixels and copy; where the design file has no frame for a step the
+  prototype shows, the gap goes to An-joe instead of copying the prototype's look. TASK-022 keeps
+  its current scope (the API contract); the screens built on 2026-10-22 (Totals, Settings, chat
+  excerpt, delete order, order updates) are recorded under TASK-021.
+- **Date:** 2026-10-23
+
 ### ADR-00N: {title}
 - **Context:** {...}
 - **Decision:** {...}

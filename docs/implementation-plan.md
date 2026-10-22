@@ -15,7 +15,8 @@
 Implement (PH-01) → Test (`qa-test-plan.md`, PH-02) → Deploy (PH-03) → Maintain (`gtm.md`,
 `decision-ledger.md`).
 
-**Design gate:** founder-owned — prototype supplied on 2026-10-23 (ADR-013; `design-brief.md` §0).
+**Design gate:** founder-owned — the static Figma design file is the visual source and the Make
+prototype is the flow reference (ADR-013, ADR-015; `design-brief.md` §0).
 **PH-01 is open.** No implementation completion is inferred from the prototype or chat.
 
 **Planning status (2026-10-07):** Stage 3 specs drafted — `brd.md`, `prd.md`, `feasibility.md`
@@ -94,7 +95,7 @@ Delivery Gate review and reconciliation with TASK-002/004/007 before assigning o
 
 | Task | Owner | Scope / accepted change | Verify command | Status |
 |---|---|---|---|---|
-| TASK-021 | Frontend | Existing scaffold, mock, and screens; reconcile its packet with the current design gate and ADR-013 contract before integration | `cd web && npm run lint && npm run build && npm test`; teammate Delivery Gate review | in progress |
+| TASK-021 | Frontend | Existing scaffold, mock, and screens — including Totals, Settings, chat excerpt, delete order and order updates (commit `3ad9e7c`); follows the design file per ADR-015; reconcile with the ADR-013 contract before integration | `cd web && npm run lint && npm run build && npm test`; teammate Delivery Gate review | in progress |
 | TASK-022 | Backend + frontend review | Pin ADR-013 request/response examples, money serialization, evidence shape, shared-source batch operation, errors and retry behavior; reconcile existing types/mock without implementing real integrations | `git diff --check` (app lint/build/tests deferred by packet) | in progress |
 | TASK-023 | Backend | Logbook deletion: fence incoming/in-flight writes, disconnect channels, remove credentials/raw/order data, retain login/profile, retry partial cleanup | `cd web && npm test` must cover TC-050/TC-051 before completion | not started |
 | TASK-024 | Frontend | Read-only owner-scoped offline logbook cache, freshness, sign-out clearing, reconnect/deletion invalidation; no raw-evidence cache | `cd web && npm test` must cover TC-052; browser offline checks in TC-019 | not started |
@@ -134,6 +135,7 @@ honesty and for a postmortem later.*
 
 | Date | Note |
 |---|---|
+| 2026-10-23 | ADR-015: the static Figma design file is the visual source; the Make prototype is the flow reference only. TASK-022 keeps its API-contract scope; the 2026-10-22 screens (Totals, Settings, chat excerpt, delete order, order updates) are recorded under TASK-021. |
 | 2026-10-23 | TASK-002 backend slice: dedicated Singapore Supabase project created at $0/month; two versioned migrations applied. RLS enabled on four tables, private upload bucket, owner isolation SQL test passes with rollback, security advisors empty. Backend session route and 5 Node tests pass. Frontend sign-in/out, same-origin handoff, and real Storage API download checks remain; task stays in progress. |
 | 2026-10-23 | TASK-025 verified: backend syntax and localhost `/health` (200)/unimplemented route (404); frontend lint, 10 tests, and Webpack production build pass. Turbopack build cannot bind its CSS worker port in this sandbox. |
 | 2026-10-23 | ADR-014: founder chose separate `backend/` and `web/` directories without `shared/`. TASK-025 opened for a structure-only migration; independent backend hosting and same-origin routing require a later integration decision. |
