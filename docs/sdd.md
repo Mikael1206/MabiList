@@ -190,6 +190,7 @@ verified connection row, never from anything in the request (INV-AS-001).
 | Route | Does | Owner check | Feature |
 |---|---|---|---|
 | `GET /api/orders` | Returns `{orders: Order[]}` for this owner; list includes drafts and confirmed orders | yes | F-002, F-003 |
+| `GET /api/session` | Verifies the Supabase access token with Auth, then returns `{email,shop_name}` from the verified owner's profile | yes | F-007 |
 | `GET /api/orders/{id}` | Returns `{order: Order}` for this owner's order | yes — referenced order | F-002, F-003 |
 | `GET /api/uploads/{uploadId}/source` | Streams the private source image while its upload remains available; no public Storage URL | yes — referenced upload | F-002, INV-001 |
 | `POST /api/extractions` | Text JSON or image multipart request per contract above. Returns `ExtractionResponse`; creates owner-scoped upload and drafts | yes — server owns all stored paths | F-001, F-005 |

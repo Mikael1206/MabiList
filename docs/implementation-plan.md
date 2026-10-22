@@ -52,7 +52,7 @@ order (F-001, F-002) — and the measurement that decides whether F-001 works as
 | Task | Feature | Description | Verify command | Status |
 |---|---|---|---|---|
 | TASK-001 | F-001 | Project setup (Next.js, test runner, lint) + **AI accuracy test**: synthetic Taglish chat set (30–50, with expected fields), `extractOrders()` for both candidate providers, scoring script per `seed/idea.md` §8 (TC-008, TC-009, TC-N06). Result picks the provider (ADR-008) and goes in `work/evidence-ledger.md` | Eval script runs both providers on the set and prints overall and key-field accuracy, guessed-value count, and timing; exits non-zero below 70% overall or 80% key fields | not started |
-| TASK-002 | F-007 | Supabase project (Singapore), tables `uploads`, `orders`, `order_items` with row-level security; private Storage bucket with per-owner folders; email + password sign-in and sign-out (`sdd.md` §4) | Tests: TC-030, TC-N14 (Owner B can't read or change Owner A's rows or files), TC-N16 (no secrets in the bundle) | not started |
+| TASK-002 | F-007 | Supabase project (Singapore), tables `uploads`, `orders`, `order_items` with row-level security; private Storage bucket with per-owner folders; email + password sign-in and sign-out (`sdd.md` §4) | Tests: TC-030, TC-N14 (Owner B can't read or change Owner A's rows or files), TC-N16 (no secrets in the bundle) | in progress |
 | TASK-003 | F-001 | `POST /api/extractions` and retry: session + ownership checks, daily cap, output validator (BR-002 fields only, phone/address stripping, BR-005 totals), upload status handling | Tests: TC-002, TC-003, TC-005, TC-007, TC-N01, TC-N04, TC-N08, TC-N17 | not started |
 | TASK-004 | F-001, F-002 | Capture and review screens from the founder's design: choose input, uploading, reading, results (no order / unreadable / failed), draft review with "not in chat" | TC-001, TC-006, TC-N13 manual steps pass on a phone browser; Delivery Gate UI items (states, contrast, keyboard) | not started |
 | TASK-005 | F-002 | Confirm, edit, discard, manual entry routes; raw upload deleted through the Storage API on confirm / discard / no order | Tests: TC-010 – TC-013, TC-N02 | not started |
@@ -134,6 +134,7 @@ honesty and for a postmortem later.*
 
 | Date | Note |
 |---|---|
+| 2026-10-23 | TASK-002 backend slice: dedicated Singapore Supabase project created at $0/month; two versioned migrations applied. RLS enabled on four tables, private upload bucket, owner isolation SQL test passes with rollback, security advisors empty. Backend session route and 5 Node tests pass. Frontend sign-in/out, same-origin handoff, and real Storage API download checks remain; task stays in progress. |
 | 2026-10-23 | TASK-025 verified: backend syntax and localhost `/health` (200)/unimplemented route (404); frontend lint, 10 tests, and Webpack production build pass. Turbopack build cannot bind its CSS worker port in this sandbox. |
 | 2026-10-23 | ADR-014: founder chose separate `backend/` and `web/` directories without `shared/`. TASK-025 opened for a structure-only migration; independent backend hosting and same-origin routing require a later integration decision. |
 | 2026-10-23 | TASK-022 started: SDD wire contract and shared types/mock aligned; backend routes and live integration remain future tasks. |

@@ -44,5 +44,5 @@ this file and `.cursor/rules/` automatically.
 The FMD pipeline is documentation only. Application commands:
 
 - Frontend (`web/`): `npm ci`, `npm run dev`, `npm run lint`, `npm run build`, `npm test`.
-- Backend (`backend/`): `npm run dev`, `npm run check`, `npm run start`. The server currently
-  implements only `GET /health`; it uses Node.js built-ins and has no install step.
+- Backend (`backend/`): `npm run dev`, `npm run check`, `npm test`, `npm run start`. The server
+  implements `GET /health` and authenticated `GET /api/session`; it uses Node.js built-ins.
