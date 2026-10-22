@@ -64,7 +64,9 @@ export default function LogbookPage() {
     if (filter === "needs") return false;
     return true;
   });
-  const showDrafts = filter === "all" || filter === "needs";
+  // Drafts sit above the chips in "All" (Figma Logbook/all). With "Needs your check" selected they
+  // list under the chips like every other filter's results (Yancy, 2026-10-22; Figma keeps them above).
+  const draftsAbove = filter === "all";
   const attention = confirmed.find(
     (o) =>
       o.payment_status === "unpaid" &&
@@ -142,7 +144,7 @@ export default function LogbookPage() {
               </button>
             )}
 
-            {showDrafts && drafts.length > 0 && (
+            {draftsAbove && drafts.length > 0 && (
               <ul className="mt-3 border-t-[1.25px] border-line">
                 {drafts.map((d) => (
                   <li key={d.id}>
@@ -167,6 +169,19 @@ export default function LogbookPage() {
                 </button>
               ))}
             </div>
+
+            {filter === "needs" && drafts.length > 0 && (
+              <section className="pt-5">
+                <h3 className="border-b-[1.25px] border-ink pb-2 font-display text-[15px]">Needs your check</h3>
+                <ul>
+                  {drafts.map((d) => (
+                    <li key={d.id}>
+                      <DraftRow draft={d} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {filter !== "needs" && shown.length > 0 && (
               <div className="grid gap-5 pt-5">
@@ -239,17 +254,25 @@ function OrderRow({ order, today }: { order: Order; today: string }) {
 }
 
 function DraftRow({ draft }: { draft: Order }) {
-  const title = [draft.customer_name ?? "Name not in chat", itemsLabel(draft)].filter(Boolean).join(" · ");
+  const isUpdate = Boolean(draft.matches_order_id || draft.match_candidates?.length);
+  const name = draft.customer_name ?? "Name not in chat";
+  const title = isUpdate ? `${name} · Order update` : [name, itemsLabel(draft)].filter(Boolean).join(" · ");
   const days = draft.expires_at ? daysUntilExpiry(draft.expires_at) : null;
   return (
     <Link
       href={`/orders/${draft.id}`}
-      className="grid min-h-[82px] grid-cols-[1fr_22px] items-center gap-[10px] border-b-[1.25px] border-line px-1 py-3"
+      className={`grid min-h-[82px] grid-cols-[1fr_22px] items-center gap-[10px] border-b-[1.25px] border-line px-1 py-3 ${
+        isUpdate ? "bg-amber-soft" : ""
+      }`}
     >
       <span className="min-w-0">
         <span className="block truncate font-display text-base font-bold">{title}</span>
         <span className="block pt-[2px] text-[12.8px] text-muted">
-          {draft.not_in_chat.includes("total_php") ? "Price not in chat" : SOURCE_LABEL[draft.source]}
+          {isUpdate
+            ? `${SOURCE_LABEL[draft.source]} · ${name}`
+            : draft.not_in_chat.includes("total_php")
+              ? "Price not in chat"
+              : SOURCE_LABEL[draft.source]}
         </span>
         {days !== null && (
           <span className="block pt-[5px] text-xs text-muted">

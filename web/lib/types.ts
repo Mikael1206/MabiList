@@ -64,6 +64,52 @@ export interface Order {
   items: OrderItem[];
   /** Draft only: when its raw upload is deleted (INV-001). Taken from the upload's `expires_at`. */
   expires_at?: string | null;
+  // The three fields below are [not in sdd.md] — see handoff/TASK-022.md "Spec changes".
+  /** Draft only: the chat lines the draft was read from, deleted with the draft (INV-001). */
+  chat_excerpt?: ChatLine[];
+  /** Draft only: open orders with the same customer name when there is more than one (F-005). */
+  match_candidates?: string[];
+  /** Confirmed only: updates applied from later chats, newest last (F-005). */
+  changes?: OrderChange[];
+}
+
+export interface ChatLine {
+  from_customer: boolean;
+  text: string;
+  /** Exact phrases inside `text` that a field was read from. */
+  highlights: string[];
+}
+
+export interface OrderChange {
+  quote: string;
+  field: OrderField | "quantity";
+  before: string;
+  after: string;
+}
+
+/** One proposed field change in an order-update draft (design-brief §2 "Quantity 5 → 3"). */
+export interface ProposedChange {
+  field: OrderField | "quantity";
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface Stats {
+  today: number;
+  week: number;
+  month: number;
+  /** Mon–Sun totals for the current week, Monday first. */
+  week_by_day: number[];
+  still_owed: number;
+  still_owed_orders: number;
+  needs_check: number;
+  waiting_for_payment: number;
+  paid: number;
+  delivered: number;
+  without_price: number;
+  top_items: { name: string; quantity: number }[];
+  due_next_7_days: number;
 }
 
 /** Values the seller types or confirms. Same fields as a draft (design-brief §2 "Enter an order by hand"). */

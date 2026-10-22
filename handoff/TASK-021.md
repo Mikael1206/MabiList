@@ -76,6 +76,22 @@ delivered, Edit), Edit order.
 - Next 16 dev overlay flags "instant navigation" on the signed-in pages because the mock session
   is client-only; goes away when Supabase Auth checks the session on the server (TASK-002).
 
+## Addendum (2026-10-22, recorded 2026-10-23 per ADR-015)
+
+Built in commit `3ad9e7c`, same write scope (`web/**`), same mock API, design file as the visual
+source: **Totals** (incl. no-sales state), **Settings** (shop name, account email, privacy and
+data, sign out), **chat excerpt** on draft review, **delete** for confirmed orders, **order-update
+drafts** (approve changes one by one, pick between several matches, "Changes from chat"), and the
+logbook "Needs your check" filter listing drafts under the filter chips. Verified then: lint clean,
+build passes, 16/16 tests; clicked through at 375×812.
+
+Deviations from the design file, for An-joe: Totals counts sales by confirmation date (ADR-007,
+ADR-013) though its caption said delivery date; privacy says 7 days, not 5; the order-update
+review has no design-file frame; "Needs your check" drafts list under the chips; top items show
+"N sold" (no unit field); the chat-excerpt label is lightened for contrast. Not shown: connected
+accounts (F-006 not working yet), Install MabiList, System states, Preview first-run, Delete my
+logbook (TASK-023 backend first).
+
 ## Status
 
 - **State:** in progress — Delivery Gate items below need a teammate click-through
