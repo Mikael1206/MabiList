@@ -4,7 +4,6 @@ import type { Order } from "./types";
 
 const order = (patch: Partial<Order>): Order => ({
   id: "o1",
-  owner_id: "x",
   upload_id: null,
   source: "manual",
   state: "confirmed",

@@ -41,6 +41,8 @@ this file and `.cursor/rules/` automatically.
 
 ## Commands
 
-There are no build commands defined in the FMD pipeline itself — it's documentation only. Once
-`handoff/TASK-001.md` (or later) creates real project scaffolding, add the actual dev/build/test
-commands here.
+The FMD pipeline is documentation only. Application commands:
+
+- Frontend (`web/`): `npm ci`, `npm run dev`, `npm run lint`, `npm run build`, `npm test`.
+- Backend (`backend/`): `npm run dev`, `npm run check`, `npm test`, `npm run start`. The server
+  implements `GET /health` and authenticated `GET /api/session`; it uses Node.js built-ins.

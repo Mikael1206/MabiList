@@ -20,11 +20,19 @@ inputs for the designer — states, copy rules, data — not layouts, colors, or
 *Ask the founder. Do not guess. Default is `unanswered`. If they say "not yet," stop: do not
 draft screens, pick a component-library look, or generate a layout to unblock the build.*
 
-- **Status:** not yet — the founder (team UI/UX designer) will design it [founder, 2026-10-07;
-  ADR-010]. **No build task starts until this changes**, including the backend-only AI spike.
-- **Source:** none yet — the founder works in Figma and Canva (`seed/context.md` §4)
-- **Link or path:** none yet
-- **Screens it covers:** none yet — §2 lists what the design needs to cover
+- **Status:** founder-owned — prototype shared by the founder on 2026-10-23 (ADR-013).
+- **Source:** An-joe's Figma Make prototype; preserve the supplied visual design.
+- **Link or path:** https://www.figma.com/make/ekR2zUP2Glr5Gl7z0I1Wal/Prototype-MabiList-PWA
+- **Screens it covers:** sign-in, logbook, capture, draft review, totals, settings, connected
+  accounts, privacy/data, first-run and system-state previews. Prototype integrations are simulated.
+
+**Accepted behavior adjustments (ADR-013):** retain nullable item unit prices; keep Not stated /
+Unpaid / Paid; show unknown-payment counts separately from amount owed; provide temporary source
+evidence; resolve shared-source drafts as a batch before deletion. Delete my logbook also
+disconnects channels but keeps login/profile. Offline logbook access is read-only with freshness
+time; copy must not promise queued orders. Clear cached shop data on sign-out and logbook deletion.
+An-joe should consider confirmation-based totals labels such as “Orders confirmed today”; the
+label itself remains a designer decision. These are behavior/copy inputs, not permission to redesign.
 
 `founder-owned` means they handed you a real design and later UI packets must follow it.
 `waived` only if they say this product has no UI, or they explicitly allow a backend-only

@@ -48,7 +48,7 @@ export function OrderForm({
     try {
       await onSubmit({
         customer_name: customer.trim() || null,
-        items: [{ name: itemName.trim(), quantity: qty }],
+        items: [{ name: itemName.trim(), quantity: qty, unit_price_php: null }],
         total_php: total,
         delivery_date: date || null,
         payment_status: payment,

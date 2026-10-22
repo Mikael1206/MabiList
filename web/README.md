@@ -1,12 +1,15 @@
 # MabiList web app
 
-Next.js 16 + Tailwind 4. Frontend screens built from the team's Figma design; the backend routes in
-`../docs/sdd.md` §2 are not built yet, so screens run on a mock API.
+Next.js 16 + Tailwind 4. This directory owns the frontend screens, local API types, and API
+adapter. The server lives in `../backend/`. Product routes from `../docs/sdd.md` §2 are not
+built yet, so screens still run on the local mock adapter. The real adapter will call backend
+HTTP routes for product data; frontend code does not import backend source or query product
+tables directly.
 
 ## Commands
 
 ```bash
-npm install
+npm ci
 npm run dev      # http://localhost:3000
 npm run lint
 npm run build
@@ -26,13 +29,14 @@ error state.
 | `app/(app)/add/manual` | Enter order by hand |
 | `app/(app)/orders/[id]` | Draft → "Check the entry"; confirmed → "Order detail" |
 | `app/(app)/orders/[id]/edit` | Edit a confirmed order |
+| `lib/types.ts` | Frontend view of the HTTP contract in `../docs/sdd.md` §2 |
 | `app/(app)/totals` | Totals (still owed, sales, chart, counts, top items, due soon) |
 | `app/(app)/settings/*` | Settings, shop name, account email, privacy and data, sign out |
 | `lib/stats.ts` | Totals maths, mirroring the SDD statistics function |
 | `lib/updates.ts` | Field-by-field changes an order-update draft proposes |
 | `lib/types.ts` | Shapes from `sdd.md` §4 — change the SDD first |
 | `lib/api/` | `index.ts` is the one mock/real switch; `mock.ts` is the stand-in |
-| `app/api/` | Backend routes (Tyrone) — not created yet |
+| `../backend/` | Independent server workspace; no source imports across the boundary |
 
 ## Not built yet
 

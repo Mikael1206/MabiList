@@ -1,6 +1,6 @@
 # Stack Decision — MabiList
 
-**Version:** 0.1 · **Status:** Decided (ADR-008) — AI provider pending the accuracy spike
+**Version:** 0.2 · **Status:** ADR-008 amended by ADR-014 — AI provider and backend hosting pending
 
 > **Agent instructions:** "Best stack" is relative to the team and the deadline, not an
 > absolute ranking of technologies. Pull the team's actual skills from `seed/context.md §5`
@@ -124,13 +124,25 @@ Why the scores differ:
 
 ## 4. Decision
 
-**Chosen stack:** Option A — Next.js + Supabase (ADR-008).
+**Original choice:** Option A — Next.js + Supabase (ADR-008). **Structure amendment:** ADR-014
+places the Next.js frontend in `web/` and an independently runnable Node.js server in
+`backend/`. Supabase remains the planned auth, database, and storage service. There is no
+`shared/` package. The option scores above were calculated for the original single-deployment
+design and have not been rescored for the separate backend.
+Product-data reads and writes now go through backend HTTP routes; the frontend may still use
+Supabase Auth for sign-in. The frontend's local types are checked against the HTTP contract,
+not against database table types.
 
-**Why, in plain language (not just "highest score"):** Each developer builds in what they
+**Original ADR-008 rationale (historical):** Each developer builds in what they
 already know, in one codebase. Supabase gives sign-in, per-owner data rules, file storage, and
 live updates without writing a separate backend. That leaves time for the part that's actually
 uncertain: getting the AI to read Taglish chat screenshots accurately (A-003). Sellers open it in
 the phone browser, so nobody installs anything to test it.
+
+ADR-014 changes the deployment tradeoff: the frontend and backend now have separate source and
+run commands. The backend host, same-origin `/api` routing, and auth credential transport must
+be chosen and verified before live integration. Until then, `web/` keeps its mock adapter and
+the API behavior is specified in `sdd.md` §2.
 
 **What we're explicitly giving up by not choosing the alternatives:** taking screenshots
 straight from the phone's share menu, which a native app (C) does best. Sellers will pick
@@ -160,3 +172,4 @@ AI libraries (B), which the MVP's single AI call doesn't need.
 |---|---|
 | 2026-10-07 | Initial decision: Option A (ADR-008), with founder-set weights and team skills |
 | 2026-10-08 | F-006 in the MVP (ADR-012): requirements, Realtime, and webhook risks added; stack choice unchanged |
+| 2026-10-23 | ADR-014: independent `backend/` and `web/` workspaces; original Option A scores retained as historical, backend hosting/auth transport open |

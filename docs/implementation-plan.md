@@ -15,9 +15,8 @@
 Implement (PH-01) → Test (`qa-test-plan.md`, PH-02) → Deploy (PH-03) → Maintain (`gtm.md`,
 `decision-ledger.md`).
 
-**Design gate:** not yet — the founder is designing the UI; no backend-first waiver (ADR-010).
-**No phase is open.** When the founder shares a design link, set `design-brief.md` §0 to
-`founder-owned`, then open PH-01.
+**Design gate:** founder-owned — prototype supplied on 2026-10-23 (ADR-013; `design-brief.md` §0).
+**PH-01 is open.** No implementation completion is inferred from the prototype or chat.
 
 **Planning status (2026-10-07):** Stage 3 specs drafted — `brd.md`, `prd.md`, `feasibility.md`
 (GO-WITH-CUTS), `stack-decision.md`, `sdd.md`, `design-brief.md`, `qa-test-plan.md`,
@@ -41,12 +40,11 @@ table order is the build order.
 
 ## 1. Phases
 
-*Verify commands: no test runner is chosen yet. TASK-001 picks it and replaces each description
-below with the exact command in its packet. Until then, the Verify column says what the command
-must prove. Each packet is scoped to about 1–3 hours; split any task that's bigger in this file
-before claiming it.*
+*The frontend has Vitest, lint, and build scripts in `web/package.json`. Backend-specific test
+commands remain to be pinned in each packet; existing descriptive Verify entries name what must
+be proved. Each packet is scoped to about 1–3 hours; split larger tasks before claiming them.*
 
-### PH-01 — Implement: prove the core loop — **status: blocked (design gate not yet, ADR-010)**
+### PH-01 — Implement: prove the core loop — **status: open**
 
 *Goal: the smallest demoable slice that delivers the core value — a screenshot becomes a confirmed
 order (F-001, F-002) — and the measurement that decides whether F-001 works as designed (A-003).*
@@ -54,7 +52,7 @@ order (F-001, F-002) — and the measurement that decides whether F-001 works as
 | Task | Feature | Description | Verify command | Status |
 |---|---|---|---|---|
 | TASK-001 | F-001 | Project setup (Next.js, test runner, lint) + **AI accuracy test**: synthetic Taglish chat set (30–50, with expected fields), `extractOrders()` for both candidate providers, scoring script per `seed/idea.md` §8 (TC-008, TC-009, TC-N06). Result picks the provider (ADR-008) and goes in `work/evidence-ledger.md` | Eval script runs both providers on the set and prints overall and key-field accuracy, guessed-value count, and timing; exits non-zero below 70% overall or 80% key fields | not started |
-| TASK-002 | F-007 | Supabase project (Singapore), tables `uploads`, `orders`, `order_items` with row-level security; private Storage bucket with per-owner folders; email + password sign-in and sign-out (`sdd.md` §4) | Tests: TC-030, TC-N14 (Owner B can't read or change Owner A's rows or files), TC-N16 (no secrets in the bundle) | not started |
+| TASK-002 | F-007 | Supabase project (Singapore), tables `uploads`, `orders`, `order_items` with row-level security; private Storage bucket with per-owner folders; email + password sign-in and sign-out (`sdd.md` §4) | Tests: TC-030, TC-N14 (Owner B can't read or change Owner A's rows or files), TC-N16 (no secrets in the bundle) | in progress |
 | TASK-003 | F-001 | `POST /api/extractions` and retry: session + ownership checks, daily cap, output validator (BR-002 fields only, phone/address stripping, BR-005 totals), upload status handling | Tests: TC-002, TC-003, TC-005, TC-007, TC-N01, TC-N04, TC-N08, TC-N17 | not started |
 | TASK-004 | F-001, F-002 | Capture and review screens from the founder's design: choose input, uploading, reading, results (no order / unreadable / failed), draft review with "not in chat" | TC-001, TC-006, TC-N13 manual steps pass on a phone browser; Delivery Gate UI items (states, contrast, keyboard) | not started |
 | TASK-005 | F-002 | Confirm, edit, discard, manual entry routes; raw upload deleted through the Storage API on confirm / discard / no order | Tests: TC-010 – TC-013, TC-N02 | not started |
@@ -80,13 +78,37 @@ order (F-001, F-002) — and the measurement that decides whether F-001 works as
 
 | Task | Feature | Description | Verify command | Status |
 |---|---|---|---|---|
-| TASK-011 | — | Deploy to Vercel Hobby (Singapore functions) and production Supabase; environment variables server-side only; synthetic demo account with sample data; Meta and Telegram webhooks pointed at the deployed URL | TC-N11, TC-N12, TC-N16, TC-N28 against the deployed URL | not started |
+| TASK-011 | — | Deploy `web/`, `backend/`, and production Supabase; select backend host and same-origin `/api` routing first (ADR-014); server-only environment variables, synthetic demo account, and webhooks pointed at the backend URL | TC-N11, TC-N12, TC-N16, TC-N28 against the deployed URL | not started |
 | TASK-012 | — | Demo rehearsal on the actual device and network; recorded backup walkthrough; `qa-test-plan.md` §3 checklist | Every demo-day checklist item ticked, by someone other than the builder | not started |
 | TASK-020 | F-006 | Meta App Review submission for real sellers' Pages: public privacy policy URL, data-deletion instructions, screencast per permission; business verification if Meta asks `[verify current requirements]`. Not needed for the demo (ADR-012) | Submission recorded in the packet with Meta's status; TC-N28 still passes until approval | not started |
 
 *Not planned: F-101 – F-104, the Filipino toggle (no feature ID yet, ADR-010), account deletion
 (open question, `prd.md` §10). If time runs out, F-006 tasks are cut first — with a ledger entry
 (ADR-012).*
+
+### ADR-013 scope reconciliation — accepted, implementation pending
+
+These additions do not mark any feature done. Narrow TASK-001's setup work against the existing
+frontend before its next packet; do not scaffold a second app. TASK-021 exists but requires
+Delivery Gate review and reconciliation with TASK-002/004/007 before assigning overlapping work.
+
+| Task | Owner | Scope / accepted change | Verify command | Status |
+|---|---|---|---|---|
+| TASK-021 | Frontend | Existing scaffold, mock, and screens; reconcile its packet with the current design gate and ADR-013 contract before integration | `cd web && npm run lint && npm run build && npm test`; teammate Delivery Gate review | in progress |
+| TASK-022 | Backend + frontend review | Pin ADR-013 request/response examples, money serialization, evidence shape, shared-source batch operation, errors and retry behavior; reconcile existing types/mock without implementing real integrations | `git diff --check` (app lint/build/tests deferred by packet) | in progress |
+| TASK-023 | Backend | Logbook deletion: fence incoming/in-flight writes, disconnect channels, remove credentials/raw/order data, retain login/profile, retry partial cleanup | `cd web && npm test` must cover TC-050/TC-051 before completion | not started |
+| TASK-024 | Frontend | Read-only owner-scoped offline logbook cache, freshness, sign-out clearing, reconnect/deletion invalidation; no raw-evidence cache | `cd web && npm test` must cover TC-052; browser offline checks in TC-019 | not started |
+| TASK-025 | Backend + frontend integration | Separate `web/` and runnable `backend/` under ADR-014 without `shared/`; preserve the HTTP contract and frontend mock | `node --check backend/src/server.mjs`; frontend lint/build/tests; backend `/health`; `git diff --check` | done |
+
+TASK-022 pins the contract; TASK-025 establishes the separate workspaces before live route work.
+TASK-023 runs in PH-02 after channel lifecycle work; TASK-024 runs
+in PH-02 after TASK-007. Both precede full QA (TASK-010). Their packets may split further if
+they exceed 1–3 hours. Existing tasks gain these acceptance requirements:
+
+- TASK-002/003/005: nullable unit prices, explicit unknown payment, price conflicts (TC-046/047).
+- TASK-003/004/005/006/017/019: temporary evidence, shared-source batches and expiry (TC-048/049).
+- TASK-008: explicit unpaid-only amount owed, unknown count, confirmed-date totals (TC-020–022).
+- TASK-004/007/016: preserve the designer's layout while reflecting ADR-013 behavior/copy inputs.
 
 ## 2. Task states
 
@@ -112,6 +134,11 @@ honesty and for a postmortem later.*
 
 | Date | Note |
 |---|---|
+| 2026-10-23 | TASK-002 backend slice: dedicated Singapore Supabase project created at $0/month; two versioned migrations applied. RLS enabled on four tables, private upload bucket, owner isolation SQL test passes with rollback, security advisors empty. Backend session route and 5 Node tests pass. Frontend sign-in/out, same-origin handoff, and real Storage API download checks remain; task stays in progress. |
+| 2026-10-23 | TASK-025 verified: backend syntax and localhost `/health` (200)/unimplemented route (404); frontend lint, 10 tests, and Webpack production build pass. Turbopack build cannot bind its CSS worker port in this sandbox. |
+| 2026-10-23 | ADR-014: founder chose separate `backend/` and `web/` directories without `shared/`. TASK-025 opened for a structure-only migration; independent backend hosting and same-origin routing require a later integration decision. |
+| 2026-10-23 | TASK-022 started: SDD wire contract and shared types/mock aligned; backend routes and live integration remain future tasks. |
+| 2026-10-23 | ADR-013: founder supplied the prototype and accepted six contract decisions. Design gate reconciled; PH-01 opened; TASK-021 recorded as in progress pending verification, TASK-022–024 added. Documentation only; no backend implemented or tests claimed passing. |
 | 2026-10-07 | Plan created. Stage 3 specs drafted in one day. Design gate not yet (ADR-010), so PH-01 is blocked; the application deck needs no build. `work/system-flow-explainer.md` was found empty, restored by the founder, and reconciled with ADR-002 – ADR-010 |
 | 2026-10-08 | ADR-012: F-006 (webhooks for business accounts) back in the MVP after Way 2; TASK-013 – TASK-020 added; PH-01 still blocked by the design gate |
 
