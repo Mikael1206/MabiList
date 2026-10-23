@@ -3,14 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ChangeEvent } from "react";
+import { useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { AppHeader, PageTitle, StatePanel, btn } from "@/components/ui";
-import { IS_MOCK, createExtraction, type SimulatedOutcome } from "@/lib/api";
+import { SHOW_DEV_TOOLS, createExtraction, type SimulatedOutcome } from "@/lib/api";
 import { shortDate } from "@/lib/format";
 import type { ExtractionInput, Order } from "@/lib/types";
 
 const MAX_FILES = 5; // [proposed] limit from design-brief §2 and the Figma "upload limits" frame
-const ALLOWED_TYPES = ["image/jpeg", "image/png"];
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 type View =
   | { kind: "choose" }
@@ -29,6 +29,16 @@ export default function AddOrderPage() {
   const [view, setView] = useState<View>({ kind: "choose" });
   const [text, setText] = useState("");
   const [showSamples, setShowSamples] = useState(false);
+
+  // Cache Components keeps this page alive (hidden) after navigating away, so without this the
+  // next visit would reopen on "Reading the chat…" or an old result with no way to upload again.
+  useLayoutEffect(
+    () => () => {
+      setView({ kind: "choose" });
+      setShowSamples(false);
+    },
+    [],
+  );
 
   async function read(input: ExtractionInput, simulate?: SimulatedOutcome) {
     setView({ kind: "reading" });
@@ -88,7 +98,7 @@ export default function AddOrderPage() {
                 <ChoiceRow icon="/icons/paste.svg" title="Paste chat text" note="Copy the customer’s messages here" onClick={() => setView({ kind: "paste" })} />
               </li>
             </ul>
-            {IS_MOCK && (
+            {SHOW_DEV_TOOLS && (
               <>
                 <button type="button" onClick={() => setShowSamples((s) => !s)} aria-expanded={showSamples} className={`${btn.link} min-h-11`}>
                   {showSamples ? "Hide" : "View"} sample input states
@@ -196,7 +206,7 @@ export default function AddOrderPage() {
         )}
 
         {view.kind === "limits" && (
-          <StatePanel showLogo={false} title="That upload can’t be used" body={`Choose up to ${MAX_FILES} JPG or PNG screenshots from one conversation.`}>
+          <StatePanel showLogo={false} title="That upload can’t be used" body={`Choose up to ${MAX_FILES} JPG, PNG or WebP screenshots from one conversation.`}>
             <button type="button" onClick={pickFiles} className={btn.primary}>
               Choose different screenshots
             </button>

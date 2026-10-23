@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computeStats, mondayOf } from "./stats";
+import { computeStats, missingDetails, mondayOf, needsCheck } from "./stats";
 import { proposedChanges } from "./updates";
 import type { Order } from "./types";
 
 const order = (patch: Partial<Order>): Order => ({
   id: "o",
-  owner_id: "x",
   upload_id: null,
   source: "manual",
   state: "confirmed",
@@ -20,7 +19,7 @@ const order = (patch: Partial<Order>): Order => ({
   confirmed_at: "2026-10-22T02:00:00Z", // Thu 22 Oct, 10:00 Manila
   created_at: "",
   updated_at: "",
-  items: [{ id: "i", order_id: "o", name: "Leche flan", quantity: 1 }],
+  items: [{ id: "i", order_id: "o", name: "Leche flan", quantity: 1, unit_price_php: null }],
   ...patch,
 });
 
@@ -51,14 +50,14 @@ describe("computeStats", () => {
     expect(s.month).toBe(1549);
     expect(s.week_by_day).toEqual([200, 0, 0, 350, 0, 0, 0]);
     expect(s.without_price).toBe(1);
-    expect(s.needs_check).toBe(1);
+    expect(s.needs_check).toBe(2); // the draft + the confirmed order with no price
   });
 
   it("adds up what is still owed and groups top items case-insensitively", () => {
     const s = computeStats(
       [
-        order({ payment_status: "unpaid", total_php: 300, items: [{ id: "a", order_id: "o", name: "Ube  Jar", quantity: 2 }] }),
-        order({ payment_status: "unpaid", total_php: 200, items: [{ id: "b", order_id: "o", name: "ube jar", quantity: 3 }] }),
+        order({ payment_status: "unpaid", total_php: 300, items: [{ id: "a", order_id: "o", name: "Ube  Jar", quantity: 2, unit_price_php: null }] }),
+        order({ payment_status: "unpaid", total_php: 200, items: [{ id: "b", order_id: "o", name: "ube jar", quantity: 3, unit_price_php: null }] }),
         order({ delivery_status: "delivered" }),
       ],
       NOW,
@@ -83,16 +82,27 @@ describe("computeStats", () => {
   });
 });
 
+describe("needs your check", () => {
+  it("covers drafts and confirmed orders missing a price, delivery date or payment", () => {
+    expect(needsCheck(order({ state: "draft" }))).toBe(true);
+    expect(needsCheck(order({}))).toBe(false); // complete confirmed order
+    const carla = order({ total_php: null, delivery_date: null, payment_status: "not_stated" });
+    expect(missingDetails(carla)).toEqual(["price", "delivery date", "payment"]);
+    expect(needsCheck(carla)).toBe(true);
+    expect(needsCheck(order({ payment_status: "unpaid" }))).toBe(false); // unpaid is stated
+  });
+});
+
 describe("proposedChanges", () => {
   it("proposes only fields the chat stated (INV-003)", () => {
-    const target = order({ payment_status: "unpaid", items: [{ id: "t", order_id: "o", name: "Leche flan", quantity: 3 }] });
+    const target = order({ payment_status: "unpaid", items: [{ id: "t", order_id: "o", name: "Leche flan", quantity: 3, unit_price_php: null }] });
     const draft = order({
       state: "draft",
       total_php: null,
       payment_status: "paid",
       delivery_date: null,
       not_in_chat: ["total_php", "delivery_date"],
-      items: [{ id: "d", order_id: "o", name: "Leche flan", quantity: 2 }],
+      items: [{ id: "d", order_id: "o", name: "Leche flan", quantity: 2, unit_price_php: null }],
     });
     expect(proposedChanges(draft, target).map((c) => `${c.label}: ${c.before} → ${c.after}`)).toEqual([
       "Quantity: 3 → 2",

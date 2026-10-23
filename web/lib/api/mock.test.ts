@@ -8,7 +8,7 @@ import {
   createManualOrder as createManualOrderSlow,
   discardDraft,
   listOrders as listOrdersSlow,
-  resetMock,
+  resetDemoData,
 } from "./mock";
 import { proposedChanges } from "../updates";
 
@@ -27,7 +27,7 @@ const listOrders = fast(listOrdersSlow);
 
 beforeEach(() => {
   vi.useFakeTimers();
-  resetMock();
+  void resetDemoData();
 });
 afterEach(() => vi.useRealTimers());
 
@@ -39,9 +39,11 @@ describe("mock API", () => {
   });
 
   it("returns each extraction outcome the screens must handle", async () => {
-    const text = { kind: "text" as const, text: "2 brownies sa Wed" };
+    const text = { kind: "text" as const, text: "Pwede po ba two boxes ng ube pandesal? 360 pesos po" };
     expect((await createExtraction(text)).status).toBe("draft_ready");
-    expect((await createExtraction({ kind: "text", text: "hello po" })).status).toBe("no_order");
+    expect((await createExtraction({ kind: "text", text: "2 brownies sa Wed" })).status).toBe("no_order");
+    const otherImage = new File(["x"], "random.png", { type: "image/png" });
+    expect((await createExtraction({ kind: "image", files: [otherImage] })).status).toBe("unreadable");
     expect((await createExtraction(text, "unreadable")).status).toBe("unreadable");
     const failed = await createExtraction(text, "failed");
     expect(failed.status).toBe("failed");
@@ -51,7 +53,7 @@ describe("mock API", () => {
   });
 
   it("marks fields the chat didn't state instead of guessing them (INV-003)", async () => {
-    const result = await createExtraction({ kind: "text", text: "2 brownies" });
+    const result = await createExtraction({ kind: "text", text: "Dalawang large po sana na banana loaf" });
     if (result.status !== "draft_ready") throw new Error("expected a draft");
     const draft = result.drafts[0];
     expect(draft.state).toBe("draft");
@@ -60,7 +62,7 @@ describe("mock API", () => {
   });
 
   it("confirms a draft into a confirmed order", async () => {
-    const result = await createExtraction({ kind: "text", text: "2 brownies" });
+    const result = await createExtraction({ kind: "text", text: "banana loaf, dalawang large" });
     if (result.status !== "draft_ready") throw new Error("expected a draft");
     const confirmed = await fast(confirmOrder)(result.drafts[0].id, {
       customer_name: "Lyn",
