@@ -111,6 +111,19 @@ they exceed 1–3 hours. Existing tasks gain these acceptance requirements:
 - TASK-008: explicit unpaid-only amount owed, unknown count, confirmed-date totals (TC-020–022).
 - TASK-004/007/016: preserve the designer's layout while reflecting ADR-013 behavior/copy inputs.
 
+### Pitch demo (ADR-017) — frontend only, mock adapter — **status: planned**
+
+*Goal: a dependable one-day stage demo of the core loop plus business-account connection, run by
+the team only. Build order is table order; TASK-012 (rehearsal) runs last. About 5–7 hours.*
+
+| Task | Owner | Description | Verify command | Status |
+|---|---|---|---|---|
+| TASK-026 | Frontend | Demo data survives reloads (browser storage, seed fallback) + "Reset demo data" in Settings | `cd web && npm test` (persist + reset tests); manual: confirm → reload → still there | done |
+| TASK-027 | Frontend | Scripted inputs: 2–3 team-made synthetic screenshots in `web/public/demo/` and pasted chats map to prepared drafts (new order with a "Not in chat" field, full order, order update matched to a seeded order); other inputs → existing unreadable / no-order states | `cd web && npm test` (each script → expected draft; update always finds its target after reset) | done (ADR-017 sign-off pending) |
+| TASK-028 | Frontend | Simulated connected accounts from design-file frames (FB, IG; connect / cancel / disconnect) + demo-only "Simulate an incoming message" draft; "Simulated for this demo" label, no Meta logos | `cd web && npm test`; manual: connect → simulate → draft in Needs your check → disconnect | done (ADR-017 sign-off pending) |
+| TASK-029 | Frontend | Demo polish: hide developer preview buttons; check the script path against the design file at the presenting device's size; demo script in `web/README.md`; "simulated" note in `pitch-deck-outline.md` | `cd web && npm run lint && npm run build && npm test`; teammate runs the script from a reset | in progress — developer buttons hidden in production builds; script waits on TASK-027 |
+| TASK-030 | Frontend + Backend | After the pitch: swap the mock adapter route by route to backend routes (extraction first, per ADR-016), then delete demo scripts, simulator, reset and browser storage, and close ADR-017 | per-route integration tests; `cd web && npm test` | not started — after the pitch |
+
 ## 2. Task states
 
 `not started` → `ready` → `in progress` → `blocked` (with reason) → `done` (Verify green
@@ -135,6 +148,11 @@ honesty and for a postmortem later.*
 
 | Date | Note |
 |---|---|
+| 2026-10-23 | Logbook rule (Yancy): "Needs your check" now lists drafts **and** confirmed orders still missing a price, delivery date or payment (with a "Missing: …" line); Totals counts them the same way. Demo path verified: Carla M. → Needs your check, Mika Santos → Waiting for payment, Angelica Reyes → Delivered after tapping "Mark delivered" on stage (her chat never says delivered, so it is not set automatically). |
+| 2026-10-23 | Fixed two demo bugs caused by Cache Components keeping hidden pages alive: Add order reopened on "Reading the chat…" after an upload (no way to upload again), and the logbook kept a stale "Needs your check" filter so a confirmed order seemed to vanish. Both pages now reset that state when hidden (Next 16 `preserving-ui-state` guide). Verified in the production build with nav-only navigation: three uploads in a row; confirmed order lands in its category. |
+| 2026-10-23 | TASK-027: scripted demo chats built from the team's screenshots (Angelica Reyes complete order; Mika Santos update 5 → 3, ₱225 → ₱135, no payment change because the chat has none; Carla M. missing fields). Unscripted screenshots read as "couldn't read". Scenario 3 file added the same day; TASK-027 done. |
+| 2026-10-23 | Pitch demo: TASK-026 done (demo data kept across reloads, Reset demo data) and TASK-028 done (simulated Facebook/Instagram connection, labelled). TASK-029 started: design-review buttons now show only in `npm run dev`. TASK-027 waits on the screenshots. Fixed stale `stats.test.ts` fixtures. |
+| 2026-10-23 | ADR-017 (An-joe sign-off pending): pitch demo mode on the mock adapter. TASK-026 – TASK-030 added. Also removed merge-conflict markers left in `decision-ledger.md` by the Teem merge; two entries share ID ADR-015 and are kept as-is. |
 | 2026-10-23 | ADR-015: the static Figma design file is the visual source; the Make prototype is the flow reference only. TASK-022 keeps its API-contract scope; the 2026-10-22 screens (Totals, Settings, chat excerpt, delete order, order updates) are recorded under TASK-021. |
 | 2026-10-23 | TASK-002 backend slice: dedicated Singapore Supabase project created at $0/month; two versioned migrations applied. RLS enabled on four tables, private upload bucket, owner isolation SQL test passes with rollback, security advisors empty. Backend session route and 5 Node tests pass. Frontend sign-in/out, same-origin handoff, and real Storage API download checks remain; task stays in progress. |
 | 2026-10-23 | TASK-025 verified: backend syntax and localhost `/health` (200)/unimplemented route (404); frontend lint, 10 tests, and Webpack production build pass. Turbopack build cannot bind its CSS worker port in this sandbox. |
