@@ -94,3 +94,74 @@ test("mock webhook accepts a signed demo payload and acknowledges it", async () 
     await once(child, "exit");
   }
 });
+
+test("order and expiry routes are routed through the backend with owner checks", async () => {
+  const upstream = createServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    if (request.headers.authorization !== "Bearer valid-token") {
+      response.writeHead(401).end("{}");
+    } else if (request.url === "/auth/v1/user") {
+      response.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" }));
+    } else if (request.url?.startsWith("/rest/v1/orders")) {
+      if (request.method === "POST") {
+        response.end(JSON.stringify([{ id: "ord-1", owner_id: "11111111-1111-4111-8111-111111111111", customer_name: "Lyn Ramos", total_php: 600, delivery_date: "2026-10-21", payment_status: "not_stated", state: "confirmed", confirmed_at: "2026-10-20T10:00:00Z" }]));
+      } else if (request.method === "DELETE") {
+        response.end(JSON.stringify([]));
+      } else {
+        response.writeHead(200).end(JSON.stringify([]));
+      }
+    } else if (request.url?.startsWith("/rest/v1/order_items")) {
+      response.end(JSON.stringify([{ id: "item-1", order_id: "ord-1", owner_id: "11111111-1111-4111-8111-111111111111", name: "Brownie box", quantity: 2, unit_price_php: null }]));
+    } else if (request.url?.startsWith("/rest/v1/uploads")) {
+      response.end(JSON.stringify([{ id: "upload-1", owner_id: "11111111-1111-4111-8111-111111111111", status: "expired" }]));
+    } else {
+      response.writeHead(404).end("{}");
+    }
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+
+  const child = spawn(process.execPath, ["src/server.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    env: {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: "0",
+      SUPABASE_URL: `http://127.0.0.1:${upstream.address().port}`,
+      SUPABASE_PUBLISHABLE_KEY: "public-key",
+      EXPIRE_UPLOADS_SECRET: "demo-secret",
+    },
+  });
+
+  try {
+    const [chunk] = await once(child.stdout, "data");
+    const port = Number(chunk.toString().match(/:(\d+)\n/)?.[1]);
+    assert.ok(port > 0);
+    const base = `http://127.0.0.1:${port}`;
+
+    const create = await fetch(`${base}/api/orders`, {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: "Bearer valid-token" },
+      body: JSON.stringify({ customer_name: "Lyn Ramos", items: [{ name: "Brownie box", quantity: 2, unit_price_php: null }], total_php: 600, delivery_date: "2026-10-21", payment_status: "not_stated" }),
+    });
+    assert.equal(create.status, 200);
+    assert.equal((await create.json()).order.customer_name, "Lyn Ramos");
+
+    const remove = await fetch(`${base}/api/orders/11111111-1111-4111-8111-111111111111`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer valid-token" },
+    });
+    assert.equal(remove.status, 204);
+
+    const expire = await fetch(`${base}/api/jobs/expire-uploads`, {
+      method: "POST",
+      headers: { "x-job-secret": "demo-secret" },
+    });
+    assert.equal(expire.status, 200);
+    assert.deepEqual(await expire.json(), { ok: true, expired: 1 });
+  } finally {
+    child.kill();
+    upstream.close();
+    await Promise.all([once(child, "exit"), once(upstream, "close")]);
+  }
+});
