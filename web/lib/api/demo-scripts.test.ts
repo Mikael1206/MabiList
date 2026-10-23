@@ -80,6 +80,22 @@ describe("scripted demo chats (TASK-027)", () => {
     expect((await settle(listOrders())).length).toBe(before + 1);
   });
 
+  it("recognises a re-saved screenshot by its pixel size, or by its shape if resized", () => {
+    // A phone can save the same picture as a different file: other bytes, other name.
+    const resaved = (w: number, h: number) =>
+      matchScript(
+        { kind: "image", files: [new File(["different bytes"], "1000012345.jpg", { type: "image/jpeg" })] },
+        [{ width: w, height: h }],
+      )?.id ?? null;
+    expect(resaved(1232, 1277)).toBe("complete-order");
+    expect(resaved(879, 1790)).toBe("order-change");
+    expect(resaved(844, 1863)).toBe("missing-fields");
+    expect(resaved(616, 639)).toBe("complete-order"); // scaled to half
+    expect(resaved(720, 1466)).toBe("order-change"); // scaled to 720 wide
+    expect(resaved(1080, 2400)).toBeNull(); // an ordinary phone screenshot
+    expect(resaved(720, 1600)).toBeNull(); // a smaller ordinary screenshot, same 9:20 shape
+  });
+
   it("nextWeekday never returns today", () => {
     expect(nextWeekday("2026-10-28", 3)).toBe("2026-11-04"); // Wednesday → next Wednesday
     expect(nextWeekday("2026-10-23", 3)).toBe("2026-10-28"); // Friday → Wednesday

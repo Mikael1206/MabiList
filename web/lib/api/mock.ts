@@ -4,7 +4,7 @@
 
 import { addDays, todayManila } from "../format";
 import { computeStats } from "../stats";
-import { matchScript, nextWeekday } from "./demo-scripts";
+import { matchScript, nextWeekday, readImageSizes } from "./demo-scripts";
 import type {
   ApiErrorCode,
   DraftResolution,
@@ -472,7 +472,7 @@ export async function createExtraction(
   } else {
     // Pitch demo (ADR-017): only the team's scripted chats are "read". Anything else gets the
     // honest result: a screenshot can't be read, pasted text has no order.
-    const script = matchScript(input);
+    const script = matchScript(input, input.kind === "image" ? await readImageSizes(input.files) : []);
     if (!script) {
       return input.kind === "image"
         ? { status: "unreadable", upload: makeUpload(kind, "no_order") }
