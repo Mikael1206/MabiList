@@ -11,16 +11,18 @@ const provider = process.argv.find((arg) => arg.startsWith('--provider='))?.spli
 const providerModels = {
   cloudflare: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
   huggingface: 'Qwen/Qwen3-8B',
+  ollama: 'llama3.2:3b',
 };
 const limit = Number(process.argv.find((arg) => arg.startsWith('--limit='))?.split('=')[1] ?? fixtures.length);
-if (!['gemini', 'cloudflare', 'huggingface'].includes(provider) || !Number.isInteger(limit) || limit < 1 || limit > fixtures.length) {
-  console.error(`Use --provider=gemini|cloudflare|huggingface and --limit=1..${fixtures.length}.`);
+if (!['gemini', 'cloudflare', 'huggingface', 'ollama'].includes(provider) || !Number.isInteger(limit) || limit < 1 || limit > fixtures.length) {
+  console.error(`Use --provider=gemini|cloudflare|huggingface|ollama and --limit=1..${fixtures.length}.`);
   process.exit(2);
 }
 const credentials = {
   gemini: ['GEMINI_API_KEY'],
   cloudflare: ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_AUTH_TOKEN'],
   huggingface: ['HF_TOKEN'],
+  ollama: [],
 }[provider];
 const missing = credentials.filter((name) => !process.env[name]);
 if (missing.length) {
@@ -49,7 +51,12 @@ for (const fixture of selected) {
     const reference = fixture.messages.join(' ');
     ocrPercent = characterAccuracy(reference, transcript);
     const actual = await extractOrders({ text: transcript }, {
-      provider, ...(providerModels[provider] ? { cloudflareModel: providerModels[provider], huggingFaceModel: providerModels[provider] } : {}),
+      provider,
+      ...(providerModels[provider] ? {
+        cloudflareModel: providerModels[provider],
+        huggingFaceModel: providerModels[provider],
+        ollamaModel: providerModels[provider],
+      } : {}),
     });
     const durationMs = Math.round(performance.now() - start);
     results.push({ id: fixture.id, durationMs, ocrMs, ocrPercent, transcript,

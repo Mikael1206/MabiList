@@ -4,3 +4,10 @@ assets/
 
 Project_Document.md
 Project_Document2.md
+
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example

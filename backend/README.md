@@ -60,16 +60,16 @@ end-to-end timing still needs the extraction route. The runner is an evaluation 
 not write to Supabase or choose a production provider automatically. Record actual results in
 `work/evidence-ledger.md` and make the ADR-008 choice only after both runs.
 
-To compare an OCR-first path, install Tesseract with English and Tagalog data (on Arch/CachyOS:
-`sudo pacman -S tesseract tesseract-data-eng tesseract-data-tgl`; on Ubuntu/Debian, install
-`tesseract-ocr`, `tesseract-ocr-eng`, and `tesseract-ocr-tgl`) and run `npm run eval:fixtures`, then
+To compare an OCR-first path, install Tesseract with English and Filipino data (on Arch/CachyOS:
+`sudo pacman -S tesseract tesseract-data-eng tesseract-data-fil`; on Ubuntu/Debian, install
+`tesseract-ocr`, `tesseract-ocr-eng`, and `tesseract-ocr-fil`) and run `npm run eval:fixtures`, then
 `npm run eval:ocr -- --provider=gemini` from `backend/`. Add `--limit=1` for a smoke test;
 `--provider=cloudflare` uses the Cloudflare text extraction adapter; `--provider=huggingface`
 uses the `Qwen/Qwen3-8B` text adapter and requires `HF_TOKEN` in the ignored `.env`. Start with
 `--limit=1`; only expand after the smoke test succeeds and Hugging Face usage/billing allows it.
 The Hugging Face adapter uses its OpenAI-compatible Inference Providers API with JSON-object
 output mode. This runner reads
-each PNG with local Tesseract OCR using both `eng` and `tgl`, sends **only the OCR transcript** to the AI provider, and
+each PNG with local Tesseract OCR using both `eng` and `fil`, sends **only the OCR transcript** to the AI provider, and
 reports normalized character accuracy against the synthetic dialogue plus order-field accuracy.
 It saves OCR transcripts, per-case scores, OCR time, and total OCR-plus-AI time in ignored
 `eval/generated/results-ocr-<provider>.json`. OCR failures count as failed extractions. The
@@ -78,6 +78,33 @@ misread prices, quantities, speaker labels, and corrections. The same rethink li
 For Cloudflare, this OCR-first runner uses `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (a text
 model); the image-first evaluator continues to use the vision model.
 
+<<<<<<< Updated upstream
+=======
+## TASK-003 extraction route
+
+Set `DAILY_EXTRACTION_LIMIT` to a positive integer in the backend environment along with the
+Supabase and Cloudflare credentials. The route accepts JSON `{ "kind": "text", "text": "..." }`
+or multipart `kind=image` with repeated PNG `files` (10 MB total, up to five files). It checks
+the Supabase access token before reading the body, stores the raw source under the verified
+owner, runs Tesseract `eng+fil` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
+The response contains a review draft and temporary source preview. It never confirms an order.
+The same bearer token is used for database and private Storage calls, with row-level security
+and owner filters. The source preview endpoint streams the first screenshot while the upload
+is available. Apply `supabase/migrations/20261022210751_allow_unknown_item_quantity.sql` before
+using the route, since an extracted item may have unknown quantity. The migration was applied
+to the dedicated MabiList project on 2026-10-23.
+
+Both TASK-003 SQL changes were applied directly to that project for verification, so its
+`supabase_migrations.schema_migrations` history does not yet list their versions. The files are
+safe to replay when the normal CLI migration workflow records them; reconcile local and remote
+migration history before using `supabase db push` on this project.
+
+The daily cap reserves each attempt, including retries, in a database transaction. The route
+is still under TASK-003 verification: real signed-in Storage and upload tests, reliable
+multiple-order/no-order handling, and frontend review of nullable draft quantities remain open. Use synthetic chats
+only while INV-011's real-data gate and TASK-001 accuracy target remain open.
+
+>>>>>>> Stashed changes
 For a Hugging Face OCR-first evaluation, set `HF_TOKEN` in `backend/.env` and run
 `npm run eval:ocr -- --provider=huggingface --limit=1` first. It calls Qwen3-8B through
 `https://router.huggingface.co/v1/chat/completions`; see the

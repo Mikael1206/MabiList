@@ -57,3 +57,40 @@ test("session route verifies a bearer token and returns only the owner's profile
     await Promise.all([once(child, "exit"), once(upstream, "close")]);
   }
 });
+
+test("mock webhook accepts a signed demo payload and acknowledges it", async () => {
+  const child = spawn(process.execPath, ["src/server.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    env: { ...process.env, HOST: "127.0.0.1", PORT: "0" },
+  });
+
+  try {
+    const [chunk] = await once(child.stdout, "data");
+    const port = Number(chunk.toString().match(/:(\d+)\n/)?.[1]);
+    assert.ok(port > 0);
+    const base = `http://127.0.0.1:${port}`;
+
+    const challenge = await fetch(`${base}/api/webhooks/mock?hub.mode=subscribe&hub.challenge=demo-challenge&hub.verify_token=demo-token`);
+    assert.equal(challenge.status, 200);
+    assert.equal(await challenge.text(), "demo-challenge");
+
+    const posted = await fetch(`${base}/api/webhooks/mock`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-mock-secret": "demo-secret",
+      },
+      body: JSON.stringify({ text: "Buyer: 2 loaves" }),
+    });
+
+    assert.equal(posted.status, 200);
+    assert.deepEqual(await posted.json(), {
+      ok: true,
+      source: "mock-webhook",
+      text: "Buyer: 2 loaves",
+    });
+  } finally {
+    child.kill();
+    await once(child, "exit");
+  }
+});
