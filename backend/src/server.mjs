@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { getSession } from "./session.mjs";
 import { handleExtraction } from "./extractions.mjs";
 import { handleOrders } from "./orders.mjs";
+import { handleChannels } from "./channels.mjs";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3001);
@@ -40,6 +41,33 @@ const server = createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.writeHead(400);
     response.end(JSON.stringify({ error: { code: "INVALID_CHALLENGE", message: "Missing or invalid webhook challenge." } }));
+    return;
+  }
+
+  if ((request.method === "GET" || request.method === "POST") && (url.pathname === "/api/webhooks/meta" || url.pathname === "/api/webhooks/telegram" || url.pathname === "/api/jobs/expire-channel-data")) {
+    const result = await handleChannels(request, process.env, fetch);
+    if (typeof result.body === "string") {
+      response.setHeader("Content-Type", "text/plain; charset=utf-8");
+      response.writeHead(result.status);
+      response.end(result.body);
+      return;
+    }
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.writeHead(result.status);
+    response.end(JSON.stringify(result.body));
+    return;
+  }
+
+  if (request.method === "DELETE" && /^\/api\/connections\/[0-9a-f-]{36}$/i.test(url.pathname)) {
+    const result = await handleChannels(request, process.env, fetch);
+    if (result.status === 204) {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.writeHead(result.status);
+    response.end(JSON.stringify(result.body));
     return;
   }
 
