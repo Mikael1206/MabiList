@@ -23,7 +23,7 @@ export function proposedChanges(draft: Order, target: Order): ProposedChange[] {
   if (stated("total_php") && draft.total_php !== null && draft.total_php !== target.total_php) {
     changes.push({
       field: "total_php",
-      label: "Price",
+      label: "Total",
       before: target.total_php === null ? "No price" : peso(target.total_php),
       after: peso(draft.total_php),
     });

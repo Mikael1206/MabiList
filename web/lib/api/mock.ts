@@ -1,11 +1,10 @@
-// Development stand-in for the routes in docs/sdd.md §2. Never shipped as the demo: demo data comes
-// from the real backend's sample account (frontend-kickoff-plan §7.5). Every order here is
-// `is_sample: true`, so the "Sample data" label shows wherever it appears (INV-009).
-//
-// shortcut: orders live in module memory and reset on a full reload; fine until the real routes land.
+// Stand-in for the routes in docs/sdd.md §2, and the pitch demo's data (ADR-017). Every order here
+// is `is_sample: true`, so the "Sample data" label shows wherever it appears (INV-009). Demo-only
+// code (browser storage, reset) is removed when the real routes land (TASK-030).
 
 import { addDays, todayManila } from "../format";
 import { computeStats } from "../stats";
+import { matchScript, nextWeekday } from "./demo-scripts";
 import type {
   ApiErrorCode,
   DraftResolution,
@@ -35,8 +34,12 @@ export class ApiError extends Error {
   }
 }
 
-/** True while screens run on this mock; turns on the design's "sample input states" panel. */
+/** True while screens run on this mock: sample-data labels, demo reset, simulated accounts. */
 export const IS_MOCK = true;
+
+/** Design-review buttons ("View sample input states", "Preview a period with no sales") show only
+ * in `npm run dev`, never in the `npm run build` + `npm start` build used on stage (TASK-029). */
+export const SHOW_DEV_TOOLS = process.env.NODE_ENV === "development";
 
 /** Forces an extraction outcome; used by the "View sample input states" panel in the design. */
 export type SimulatedOutcome = "unreadable" | "no_order" | "failed" | "several";
@@ -123,6 +126,17 @@ function seed(): Order[] {
     confirmed("Paolo Garcia", "Ube pandesal box", 4, 1120, 5, false, 2),
     confirmed("Liza Tan", "Brownie box", 1, null, 6, false, 1),
     confirmed("Ana Cruz", "Leche flan", 2, 700, -1, true, 4, true),
+    // Original order for the scripted "order changes later" chat (TASK-027): 5 × ₱45, pay on arrival.
+    makeOrder(
+      {
+        customer_name: "Mika Santos",
+        items: [{ name: "Ensaymada", quantity: 5, unit_price_php: 45 }],
+        total_php: 225,
+        delivery_date: nextWeekday(t, 5),
+        payment_status: "unpaid",
+      },
+      { source: "screenshot", confirmed_at: daysAgoIso(1) },
+    ),
     draft(
       {
         customer_name: "Lyn Ramos",
@@ -174,7 +188,42 @@ function seed(): Order[] {
   ];
 }
 
-let orders: Order[] = seed();
+const ORDERS_KEY = "mabilist.demo-orders.v1";
+
+const isOrderList = (value: unknown): value is Order[] =>
+  Array.isArray(value) &&
+  value.every((o) => o && typeof o.id === "string" && typeof o.state === "string" && Array.isArray(o.items));
+
+/** Saved demo orders, or the seed when storage is blocked, empty, or holds an older shape. */
+function loadOrders(): Order[] {
+  try {
+    const raw = localStorage.getItem(ORDERS_KEY);
+    const saved: unknown = raw ? JSON.parse(raw) : null;
+    if (isOrderList(saved)) {
+      // Continue the id counter past saved ids so new orders never collide with them.
+      for (const o of saved) {
+        for (const ref of [o.id, ...o.items.map((i) => i.id)]) {
+          seq = Math.max(seq, Number(ref.split("-").pop()) || 0);
+        }
+      }
+      return saved;
+    }
+  } catch {
+    // Storage blocked or broken JSON: fall through to the seed.
+  }
+  return seed();
+}
+
+function setOrders(next: Order[]) {
+  orders = next;
+  try {
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+  } catch {
+    // Private mode or blocked storage: changes last for this session only.
+  }
+}
+
+let orders: Order[] = loadOrders();
 
 function findOrder(orderId: string): Order {
   const order = orders.find((o) => o.id === orderId);
@@ -253,7 +302,7 @@ export async function getOrder(orderId: string): Promise<Order> {
 export async function createManualOrder(input: OrderInput): Promise<Order> {
   await wait(300);
   const order = makeOrder(input, { source: "manual" });
-  orders = [...orders, order];
+  setOrders([...orders, order]);
   return order;
 }
 
@@ -268,7 +317,7 @@ export async function confirmOrder(orderId: string, input: OrderInput): Promise<
     not_in_chat: [],
     expires_at: null,
   });
-  orders = orders.map((o) => (o.id === orderId ? confirmed : o));
+  setOrders(orders.map((o) => (o.id === orderId ? confirmed : o)));
   return confirmed;
 }
 
@@ -287,7 +336,7 @@ export async function updateOrder(
       : current.items,
     updated_at: nowIso(),
   };
-  orders = orders.map((o) => (o.id === orderId ? updated : o));
+  setOrders(orders.map((o) => (o.id === orderId ? updated : o)));
   return updated;
 }
 
@@ -297,7 +346,7 @@ export async function discardDraft(orderId: string): Promise<void> {
   if (findOrder(orderId).state !== "draft") {
     throw new ApiError("Only drafts can be deleted.", "CONFLICT", 409);
   }
-  orders = orders.filter((o) => o.id !== orderId);
+  setOrders(orders.filter((o) => o.id !== orderId));
 }
 
 /** Resolves every draft tied to one source before that source can be removed. */
@@ -328,7 +377,7 @@ export async function resolveDraftBatch(
     .filter((resolution) => resolution.action === "discard")
     .map((resolution) => resolution.order_id);
   const resolvedIds = new Set(requestedIds);
-  orders = [...orders.filter((order) => !resolvedIds.has(order.id)), ...confirmed_orders];
+  setOrders([...orders.filter((order) => !resolvedIds.has(order.id)), ...confirmed_orders]);
   return { confirmed_orders, discarded_order_ids };
 }
 
@@ -388,29 +437,25 @@ export async function createExtraction(
   if (simulate === "failed") {
     return { status: "failed", upload: makeUpload(kind, "failed", "The reading service timed out.") };
   }
-  // Mock rule: pasted text with no number in it reads as small talk, not an order.
-  if (simulate === "no_order" || (input.kind === "text" && !/\d/.test(input.text))) {
-    return { status: "no_order", upload: makeUpload(kind, "no_order") };
-  }
+  if (simulate === "no_order") return { status: "no_order", upload: makeUpload(kind, "no_order") };
 
   const upload = makeUpload(kind, "draft_ready");
-  const tomorrow = addDays(todayManila(), 1);
-  const drafts = [
-    draftFrom(
-      upload,
-      {
-        customer_name: null,
-        items: [{ name: "Brownie box", quantity: 2, unit_price_php: null }],
-        total_php: null,
-        delivery_date: tomorrow,
-        payment_status: "not_stated",
-      },
-      ["customer_name", "total_php"],
-      excerptOf(input),
-    ),
-  ];
+  let drafts: Order[];
   if (simulate === "several") {
-    drafts.push(
+    // Design-review sample only (dev builds): two drafts from one chat.
+    drafts = [
+      draftFrom(
+        upload,
+        {
+          customer_name: null,
+          items: [{ name: "Brownie box", quantity: 2, unit_price_php: null }],
+          total_php: null,
+          delivery_date: addDays(todayManila(), 1),
+          payment_status: "not_stated",
+        },
+        ["customer_name", "total_php"],
+        excerptOf(input),
+      ),
       draftFrom(
         upload,
         {
@@ -423,9 +468,24 @@ export async function createExtraction(
         ["customer_name", "total_php", "delivery_date", "payment_status"],
         excerptOf(input),
       ),
-    );
+    ];
+  } else {
+    // Pitch demo (ADR-017): only the team's scripted chats are "read". Anything else gets the
+    // honest result: a screenshot can't be read, pasted text has no order.
+    const script = matchScript(input);
+    if (!script) {
+      return input.kind === "image"
+        ? { status: "unreadable", upload: makeUpload(kind, "no_order") }
+        : { status: "no_order", upload: makeUpload(kind, "no_order") };
+    }
+    const draft = draftFrom(upload, script.draft(todayManila()), script.notInChat, script.excerpt);
+    if (script.updates) {
+      const target = orders.find((o) => o.state === "confirmed" && o.customer_name === draft.customer_name);
+      if (target) draft.matches_order_id = target.id;
+    }
+    drafts = [draft];
   }
-  orders = [...orders, ...drafts];
+  setOrders([...orders, ...drafts]);
   const field_evidence: FieldEvidence[] = [];
   const source_preview = input.kind === "text"
     ? { upload_id: upload.id, kind: "text" as const, text: input.text, expires_at: upload.expires_at }
@@ -439,7 +499,7 @@ export async function createExtraction(
 export async function deleteOrder(orderId: string): Promise<void> {
   await wait(250);
   findOrder(orderId);
-  orders = orders.filter((o) => o.id !== orderId);
+  setOrders(orders.filter((o) => o.id !== orderId));
 }
 
 /**
@@ -453,7 +513,11 @@ export async function applyUpdate(draftId: string, targetId: string, approved: P
   if (draft.state !== "draft" || target.state !== "confirmed") {
     throw new ApiError("That update can’t be applied any more. Check the logbook.");
   }
-  const quote = draft.chat_excerpt?.find((l) => l.from_customer)?.text ?? "From chat";
+  const lines = draft.chat_excerpt ?? [];
+  const quote =
+    lines.find((l) => l.from_customer && l.highlights.length)?.text ??
+    lines.find((l) => l.from_customer)?.text ??
+    "From chat";
   const next: Order = { ...target, items: target.items.map((i) => ({ ...i })), updated_at: nowIso() };
   for (const change of approved) {
     if (change.field === "quantity" && next.items[0]) next.items[0].quantity = draft.items[0].quantity;
@@ -464,7 +528,7 @@ export async function applyUpdate(draftId: string, targetId: string, approved: P
   }
   const log: OrderChange[] = approved.map((c) => ({ quote, field: c.field, before: c.before, after: c.after }));
   next.changes = [...(target.changes ?? []), ...log];
-  orders = orders.filter((o) => o.id !== draftId).map((o) => (o.id === targetId ? next : o));
+  setOrders(orders.filter((o) => o.id !== draftId).map((o) => (o.id === targetId ? next : o)));
   return next;
 }
 
@@ -493,7 +557,92 @@ export async function updateEmail(email: string): Promise<Session> {
   return next;
 }
 
-/** Test hook: restores the seeded sample data. */
-export function resetMock() {
-  orders = seed();
+// --- Simulated connected accounts (ADR-017, TASK-028). Demo only: no Meta login or webhook. ---
+
+export type DemoPlatform = "messenger" | "instagram";
+export type DemoConnections = Record<DemoPlatform, boolean>;
+
+const CONNECTIONS_KEY = "mabilist.demo-connections.v1";
+const NO_CONNECTIONS: DemoConnections = { messenger: false, instagram: false };
+
+function readConnections(): DemoConnections {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CONNECTIONS_KEY) ?? "null");
+    if (saved && typeof saved.messenger === "boolean" && typeof saved.instagram === "boolean") return saved;
+  } catch {
+    // Storage blocked or broken JSON: start disconnected.
+  }
+  return { ...NO_CONNECTIONS };
+}
+
+let connections = readConnections();
+
+function setConnections(next: DemoConnections) {
+  connections = next;
+  try {
+    localStorage.setItem(CONNECTIONS_KEY, JSON.stringify(connections));
+  } catch {
+    // Private mode: lasts for this session only.
+  }
+}
+
+export async function listDemoConnections(): Promise<DemoConnections> {
+  await wait(150);
+  return { ...connections };
+}
+
+export async function connectDemoAccount(platform: DemoPlatform): Promise<DemoConnections> {
+  await wait(600);
+  setConnections({ ...connections, [platform]: true });
+  return { ...connections };
+}
+
+/** Messages stop; drafts from that account are deleted; confirmed orders stay (design-brief §2). */
+export async function disconnectDemoAccount(platform: DemoPlatform): Promise<DemoConnections> {
+  await wait(300);
+  setConnections({ ...connections, [platform]: false });
+  setOrders(orders.filter((o) => !(o.state === "draft" && o.source === platform)));
+  return { ...connections };
+}
+
+/** "Simulate an incoming message": a customer message on the connected account becomes a draft. */
+export async function simulateIncomingMessage(platform: DemoPlatform): Promise<Order> {
+  await wait(400);
+  if (!connections[platform]) {
+    throw new ApiError("Connect the account first.", "CONFLICT", 409);
+  }
+  const upload = makeUpload("text", "draft_ready");
+  // The chat says "Saturday", so the draft uses the next Saturday and nothing the chat didn't say.
+  const draft = makeOrder(
+    {
+      customer_name: "Bea Santos",
+      items: [{ name: "Ube pandesal box", quantity: 2, unit_price_php: null }],
+      total_php: null,
+      delivery_date: nextWeekday(todayManila(), 6),
+      payment_status: "not_stated",
+    },
+    {
+      source: platform,
+      upload_id: upload.id,
+      state: "draft",
+      confirmed_at: null,
+      not_in_chat: ["total_php", "payment_status"],
+      expires_at: upload.expires_at,
+      chat_excerpt: [
+        {
+          from_customer: true,
+          text: "Hi! Bea po. Pa-order 2 ube pandesal box, pick up sa Saturday.",
+          highlights: ["Bea", "2 ube pandesal box", "Saturday"],
+        },
+      ],
+    },
+  );
+  setOrders([...orders, draft]);
+  return draft;
+}
+
+/** Settings → "Reset demo data": restores the sample orders and disconnects demo accounts (TASK-026). */
+export async function resetDemoData(): Promise<void> {
+  setOrders(seed());
+  setConnections({ ...NO_CONNECTIONS });
 }

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useSession } from "@/components/SessionContext";
 import { ErrorNote, Eyebrow, PaymentChip, SampleBadge, btn } from "@/components/ui";
 import { listOrders } from "@/lib/api";
@@ -17,6 +17,7 @@ import {
   todayManila,
   type LogbookGroup,
 } from "@/lib/format";
+import { missingDetails } from "@/lib/stats";
 import type { Order } from "@/lib/types";
 
 type Filter = "all" | "unpaid" | "needs" | "delivered";
@@ -35,6 +36,9 @@ export default function LogbookPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  // Cache Components keeps this page alive (hidden) while an order is open. Back on the logbook,
+  // start from "All" so a just-confirmed order shows in its category instead of under a stale filter.
+  useLayoutEffect(() => () => setFilter("all"), []);
   const today = todayManila();
 
   const load = useCallback(() => {
@@ -67,6 +71,8 @@ export default function LogbookPage() {
   // Drafts sit above the chips in "All" (Figma Logbook/all). With "Needs your check" selected they
   // list under the chips like every other filter's results (Yancy, 2026-10-22; Figma keeps them above).
   const draftsAbove = filter === "all";
+  // Confirmed orders still missing a price, date or payment also need the seller (2026-10-23).
+  const incomplete = confirmed.filter((o) => missingDetails(o).length > 0);
   const attention = confirmed.find(
     (o) =>
       o.payment_status === "unpaid" &&
@@ -170,13 +176,18 @@ export default function LogbookPage() {
               ))}
             </div>
 
-            {filter === "needs" && drafts.length > 0 && (
+            {filter === "needs" && drafts.length + incomplete.length > 0 && (
               <section className="pt-5">
                 <h3 className="border-b-[1.25px] border-ink pb-2 font-display text-[15px]">Needs your check</h3>
                 <ul>
                   {drafts.map((d) => (
                     <li key={d.id}>
                       <DraftRow draft={d} />
+                    </li>
+                  ))}
+                  {incomplete.map((o) => (
+                    <li key={o.id}>
+                      <OrderRow order={o} today={today} missing={missingDetails(o)} />
                     </li>
                   ))}
                 </ul>
@@ -204,7 +215,7 @@ export default function LogbookPage() {
               </div>
             )}
 
-            {((filter === "needs" && drafts.length === 0) || (filter !== "needs" && shown.length === 0)) && (
+            {((filter === "needs" && drafts.length + incomplete.length === 0) || (filter !== "needs" && shown.length === 0)) && (
               <section className="pt-6 text-center">
                 <p className="font-display text-base font-bold">No orders match</p>
                 <button type="button" onClick={() => setFilter("all")} className={`${btn.link} mt-2 min-h-11`}>
@@ -231,7 +242,7 @@ function attentionLine(o: Order, today: string) {
   return `${firstName(o)}’s ${what} is ${when} and unpaid.`;
 }
 
-function OrderRow({ order, today }: { order: Order; today: string }) {
+function OrderRow({ order, today, missing }: { order: Order; today: string; missing?: string[] }) {
   return (
     <Link
       href={`/orders/${order.id}`}
@@ -242,6 +253,9 @@ function OrderRow({ order, today }: { order: Order; today: string }) {
         <span className="block truncate pt-[3px] text-xs text-muted">
           {[itemsLabel(order), dueLabel(order, today), SOURCE_LABEL[order.source]].filter(Boolean).join(" · ")}
         </span>
+        {missing && missing.length > 0 && (
+          <span className="block pt-[3px] text-xs text-rust">Missing: {missing.join(", ")}</span>
+        )}
       </span>
       <span className="flex flex-col items-end">
         <span className="text-base font-bold">{order.total_php !== null ? peso(order.total_php) : "No price"}</span>
