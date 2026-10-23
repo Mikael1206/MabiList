@@ -37,10 +37,16 @@ screenshots show "We couldn't read that chat"; other text shows "We didn't find 
 
 ## Matching rule (as built, `web/lib/api/demo-scripts.ts`)
 
-- Screenshot: exact byte size, or the `public/demo` file name. (SHA-256 was dropped: browsers
-  only offer it over HTTPS, and the presenting phone may use plain `http://` on the LAN.)
-- Pasted text: all of a script's key phrases present, case-insensitive.
-- The chat-excerpt lines and highlights are copied from each screenshot, not invented.
+1. Exact byte size or `public/demo` file name (an untouched copy).
+2. Exact pixel size — 1232×1277, 879×1790, 844×1863 — read in the browser with
+   `createImageBitmap` (works over plain `http://`). Added 2026-10-23 after a phone on the Vercel
+   deploy showed "We couldn't read that chat" for downloaded originals: the phone had saved them as
+   different files.
+3. Same shape (within 0.3%) **and smaller** — a resized copy. Larger images never match, so an
+   ordinary 1080×2400 phone screenshot (0.7% from chat 3's shape) is still "couldn't read".
+
+Pasted text: all of a script's key phrases present, case-insensitive. The chat-excerpt lines and
+highlights are copied from each screenshot, not invented.
 
 ## Write scope
 
@@ -66,5 +72,8 @@ cd web && npm run lint && npm test
   test now reads the real file. Browser, production build: uploaded as `Screenshot_20261023.png` →
   draft with Carla M. · Banana loaf (large) · 2 · price and date empty with "Not in chat" ·
   payment "Not mentioned in chat". 26/26 tests.
+- **Phone fix (2026-10-23):** pixel-size and shape matching added; 28/28 tests. Production build:
+  re-encoded full-size copy (96,130 bytes, renamed) → Angelica Reyes; half-size copy → Carla M.;
+  ordinary 1080×2400 image → "We couldn't read that chat". Not yet re-tested on the phone.
 - **Delivery Gate:** pass with notes — no dead controls; drafts hold only what each chat shows;
   "Sample data" label unchanged. Keyboard and screen-reader passes not done.
