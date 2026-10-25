@@ -99,6 +99,78 @@ function readBody(request) {
   });
 }
 
+async function deleteOwnerData({ env, fetchImpl, ownerId }) {
+  const serviceHeaders = {
+    apikey: env.SUPABASE_PUBLISHABLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}`,
+  };
+
+  const conversationsUrl = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+  conversationsUrl.searchParams.set("select", "id");
+  conversationsUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+  const conversationsResponse = await fetchImpl(conversationsUrl, { headers: serviceHeaders });
+  if (!conversationsResponse.ok) throw new Error("Failed to fetch conversations for owner cleanup");
+  const conversations = await conversationsResponse.json();
+  const conversationIds = Array.isArray(conversations) ? conversations.map((conversation) => conversation.id).filter(Boolean) : [];
+
+  const messageUrl = new URL("/rest/v1/chat_messages", env.SUPABASE_URL);
+  messageUrl.searchParams.set("select", "id");
+  messageUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+  if (conversationIds.length > 0) {
+    messageUrl.searchParams.set("conversation_id", `in.(${conversationIds.join(",")})`);
+  }
+  const messagesResponse = await fetchImpl(messageUrl, { headers: serviceHeaders });
+  if (!messagesResponse.ok) throw new Error("Failed to fetch chat messages for owner cleanup");
+  const chatMessages = await messagesResponse.json();
+  const removed = Array.isArray(chatMessages) ? chatMessages.length : 0;
+
+  if (conversationIds.length > 0) {
+    const deleteMessagesUrl = new URL("/rest/v1/chat_messages", env.SUPABASE_URL);
+    deleteMessagesUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+    deleteMessagesUrl.searchParams.set("conversation_id", `in.(${conversationIds.join(",")})`);
+    await fetchImpl(deleteMessagesUrl, {
+      method: "DELETE",
+      headers: serviceHeaders,
+    });
+
+    const deleteConversationsUrl = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+    deleteConversationsUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+    await fetchImpl(deleteConversationsUrl, {
+      method: "DELETE",
+      headers: serviceHeaders,
+    });
+  }
+
+  const deleteOwnerMessagesUrl = new URL("/rest/v1/chat_messages", env.SUPABASE_URL);
+  deleteOwnerMessagesUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+  await fetchImpl(deleteOwnerMessagesUrl, {
+    method: "DELETE",
+    headers: serviceHeaders,
+  });
+
+  const deleteConnectionsUrl = new URL("/rest/v1/channel_connections", env.SUPABASE_URL);
+  deleteConnectionsUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+  await fetchImpl(deleteConnectionsUrl, {
+    method: "DELETE",
+    headers: serviceHeaders,
+  });
+
+  const deleteSecretsUrl = new URL("/rest/v1/channel_secrets", env.SUPABASE_URL);
+  deleteSecretsUrl.searchParams.set("owner_id", `eq.${ownerId}`);
+  await fetchImpl(deleteSecretsUrl, {
+    method: "DELETE",
+    headers: serviceHeaders,
+  });
+
+  return { removed: removed || 0, owner_id: ownerId };
+}
+
+function verifyMetaSignature(rawBody, signature, secret) {
+  if (!signature || !secret) return false;
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  return safeEqual(`sha256=${expected}`, signature);
+}
+
 function extractMetaPayload(payload) {
   const entry = payload?.entry ?? [];
   for (const item of entry) {
@@ -397,10 +469,58 @@ export async function handleChannels(request, env = process.env, fetchImpl = fet
       return { status: 200, body: { ok: true, expired: count } };
     }
 
+    if (request.method === "POST" && url.pathname === "/api/webhooks/meta/data-deletion") {
+      const raw = await new Promise((resolve, reject) => {
+        const chunks = [];
+        let size = 0;
+        request.on("data", (chunk) => {
+          size += chunk.length;
+          if (size > 1024 * 1024) return reject(new Error("Payload too large."));
+          chunks.push(Buffer.from(chunk));
+        });
+        request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        request.on("error", reject);
+      });
+      const payload = raw ? JSON.parse(raw) : {};
+      const signature = request.headers["x-hub-signature-256"] ?? "";
+      const secret = env.META_APP_SECRET ?? "";
+      if (!verifyMetaSignature(raw, signature, secret)) {
+        return error(401, "UNAUTHENTICATED", "Invalid Meta signature.");
+      }
+      const ownerId = typeof payload?.user_id === "string" ? payload.user_id : payload?.data?.user_id;
+      if (!ownerId || !/^[0-9a-f-]{36}$/i.test(ownerId)) {
+        return error(400, "INVALID_BODY", "Missing or invalid user id.");
+      }
+      const cleaned = await deleteOwnerData({ env, fetchImpl, ownerId });
+      return { status: 200, body: { ok: true, removed: cleaned.removed, owner_id: ownerId } };
+    }
+
     if (request.method === "DELETE" && /^\/api\/connections\/[0-9a-f-]{36}$/i.test(url.pathname)) {
       const owner = await ownerFromRequest(request, env, fetchImpl);
       if (!owner) return error(401, "UNAUTHENTICATED", "Please sign in.");
       const id = url.pathname.split("/").at(-1);
+      const connection = await getConnection({ env, fetchImpl, ownerId: owner.id, connectionId: id });
+      if (connection) {
+        const conversationUrl = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+        conversationUrl.searchParams.set("select", "id");
+        conversationUrl.searchParams.set("owner_id", `eq.${owner.id}`);
+        conversationUrl.searchParams.set("connection_id", `eq.${connection.id}`);
+        const conversationsResponse = await fetchImpl(conversationUrl, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+        if (conversationsResponse.ok) {
+          const rows = await conversationsResponse.json();
+          const conversationIds = Array.isArray(rows) ? rows.map((row) => row.id).filter(Boolean) : [];
+          if (conversationIds.length > 0) {
+            const messagesUrl = new URL("/rest/v1/chat_messages", env.SUPABASE_URL);
+            messagesUrl.searchParams.set("owner_id", `eq.${owner.id}`);
+            messagesUrl.searchParams.set("conversation_id", `in.(${conversationIds.join(",")})`);
+            await fetchImpl(messagesUrl, { method: "DELETE", headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+            const conversationsDeleteUrl = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+            conversationsDeleteUrl.searchParams.set("owner_id", `eq.${owner.id}`);
+            conversationsDeleteUrl.searchParams.set("connection_id", `eq.${connection.id}`);
+            await fetchImpl(conversationsDeleteUrl, { method: "DELETE", headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+          }
+        }
+      }
       await fetchImpl(new URL("/rest/v1/channel_connections", env.SUPABASE_URL), {
         method: "DELETE",
         headers: { ...owner.headers, "content-type": "application/json" },

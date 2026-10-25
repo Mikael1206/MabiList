@@ -173,6 +173,35 @@ test("connect routes validate ownership and store linked channel records", async
   assert.equal(connected.body.connection.platform, "telegram");
 });
 
+test("meta data-deletion callback removes stored messages for the affected owner", async () => {
+  const requests = [];
+  const fetchImpl = async (url, options = {}) => {
+    const path = new URL(url).pathname;
+    requests.push({ path, method: options.method ?? "GET", body: options.body ?? null });
+    if (path === "/auth/v1/user") return reply({ id: ownerId, email: "owner@example.com" });
+    if (path === "/rest/v1/conversations") return reply([{ id: "conv-10", owner_id: ownerId, connection_id: "conn-10", status: "pending" }]);
+    if (path === "/rest/v1/chat_messages") return reply([{ id: "msg-10", owner_id: ownerId, conversation_id: "conv-10", text: "Buyer: 2 cookies" }]);
+    if (path === "/rest/v1/channel_connections") return reply([{ id: "conn-10", owner_id: ownerId, platform: "meta", external_id: "page-10", status: "active" }]);
+    if (path === "/rest/v1/channel_secrets") return reply([{ id: "secret-10", connection_id: "conn-10" }]);
+    if (path === "/rest/v1/orders") return reply([{ id: "order-10", owner_id: ownerId, conversation_id: "conv-10", state: "draft" }]);
+    throw new Error(`Unexpected ${path}`);
+  };
+
+  const payload = { user_id: ownerId, app_id: "app-123" };
+  const result = await handleChannels(
+    request("POST", "/api/webhooks/meta/data-deletion", payload, {
+      "content-type": "application/json",
+      "x-hub-signature-256": signMeta(payload),
+    }),
+    { ...env },
+    fetchImpl,
+  );
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body, { ok: true, removed: 1, owner_id: ownerId });
+  assert.ok(requests.some((item) => item.path === "/rest/v1/chat_messages" && item.method === "DELETE"));
+});
+
 test("conversation retry extracts from the queued chat and creates a draft order", async () => {
   const fetchImpl = async (url, options = {}) => {
     const path = new URL(url).pathname;

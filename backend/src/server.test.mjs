@@ -182,6 +182,86 @@ test("order and expiry routes are routed through the backend with owner checks",
   }
 });
 
+test("owner-scoped logbook stream isolates updates by authenticated owner", async () => {
+  const upstream = createServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    if (request.url === "/auth/v1/user") {
+      const auth = request.headers.authorization ?? "";
+      if (auth === "Bearer valid-token") {
+        response.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" }));
+        return;
+      }
+      if (auth === "Bearer other-token") {
+        response.end(JSON.stringify({ id: "22222222-2222-4222-8222-222222222222", email: "other@example.com" }));
+        return;
+      }
+      response.writeHead(401).end("{}");
+      return;
+    }
+    response.writeHead(404).end("{}");
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+
+  const child = spawn(process.execPath, ["src/server.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    env: {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: "0",
+      SUPABASE_URL: `http://127.0.0.1:${upstream.address().port}`,
+      SUPABASE_PUBLISHABLE_KEY: "public-key",
+    },
+  });
+
+  try {
+    const [chunk] = await once(child.stdout, "data");
+    const port = Number(chunk.toString().match(/:(\d+)\n/)?.[1]);
+    assert.ok(port > 0);
+    const base = `http://127.0.0.1:${port}`;
+
+    const ownerStream = await fetch(`${base}/api/logbook/live`, {
+      headers: { Authorization: "Bearer valid-token" },
+    });
+    const otherStream = await fetch(`${base}/api/logbook/live`, {
+      headers: { Authorization: "Bearer other-token" },
+    });
+    assert.equal(ownerStream.status, 200);
+    assert.equal(otherStream.status, 200);
+
+    const published = await fetch(`${base}/api/logbook/notify`, {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-token", "content-type": "application/json" },
+      body: JSON.stringify({ type: "conversation_status", payload: { conversation_id: "conv-42", status: "draft_ready" } }),
+    });
+    assert.equal(published.status, 200);
+    assert.deepEqual(await published.json(), { ok: true, delivered: 1, owner_id: "11111111-1111-4111-8111-111111111111" });
+
+    const ownerReader = ownerStream.body.getReader();
+    const otherReader = otherStream.body.getReader();
+    const textDecoder = new TextDecoder();
+    let ownerEvents = "";
+    let otherEvents = "";
+
+    for (let i = 0; i < 12; i += 1) {
+      const ownerResult = await ownerReader.read();
+      const otherResult = await otherReader.read();
+      if (!ownerResult.done) ownerEvents += textDecoder.decode(ownerResult.value, { stream: true });
+      if (!otherResult.done) otherEvents += textDecoder.decode(otherResult.value, { stream: true });
+      if (ownerEvents.includes("conversation_status") || otherEvents.includes("conversation_status")) {
+        break;
+      }
+    }
+
+    assert.match(ownerEvents, /conversation_status/);
+    assert.doesNotMatch(otherEvents, /conversation_status/);
+  } finally {
+    child.kill();
+    upstream.close();
+    await Promise.all([once(child, "exit"), once(upstream, "close")]);
+  }
+});
+
 test("owner-scoped logbook stream accepts a session and publishes draft updates", async () => {
   const upstream = createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");

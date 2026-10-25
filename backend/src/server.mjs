@@ -49,7 +49,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if ((request.method === "GET" || request.method === "POST") && (url.pathname === "/api/webhooks/meta" || url.pathname === "/api/webhooks/telegram" || url.pathname === "/api/jobs/expire-channel-data")) {
+  if ((request.method === "GET" || request.method === "POST") && (url.pathname === "/api/webhooks/meta" || url.pathname === "/api/webhooks/meta/data-deletion" || url.pathname === "/api/webhooks/telegram" || url.pathname === "/api/jobs/expire-channel-data")) {
     const result = await handleChannels(request, process.env, fetch);
     if (typeof result.body === "string") {
       response.setHeader("Content-Type", "text/plain; charset=utf-8");
