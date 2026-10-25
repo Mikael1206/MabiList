@@ -172,3 +172,50 @@ test("connect routes validate ownership and store linked channel records", async
   assert.equal(connected.status, 200);
   assert.equal(connected.body.connection.platform, "telegram");
 });
+
+test("conversation retry extracts from the queued chat and creates a draft order", async () => {
+  const fetchImpl = async (url, options = {}) => {
+    const path = new URL(url).pathname;
+    const query = new URL(url).searchParams;
+
+    if (path === "/auth/v1/user") return reply({ id: ownerId, email: "owner@example.com" });
+    if (path === "/rest/v1/conversations") {
+      if (options.method === "PATCH") return reply([{ id: "conv-9", owner_id: ownerId, status: "draft_ready", connection_id: "conn-9", platform_thread_id: "chat-9" }]);
+      return reply([{ id: "conv-9", owner_id: ownerId, status: "failed", connection_id: "conn-9", platform_thread_id: "chat-9", failure_reason: "timeout" }]);
+    }
+    if (path === "/rest/v1/chat_messages") {
+      return reply([
+        { id: "msg-1", owner_id: ownerId, conversation_id: "conv-9", text: "Buyer: 2 brownies", sent_at: "2026-10-20T10:00:00Z" },
+        { id: "msg-2", owner_id: ownerId, conversation_id: "conv-9", text: "Total is 500 PHP", sent_at: "2026-10-20T10:03:00Z" },
+      ]);
+    }
+    if (path === "/rest/v1/channel_connections") {
+      return reply([{ id: "conn-9", owner_id: ownerId, platform: "telegram", external_id: "chat-9", status: "active" }]);
+    }
+    if (path === "/rest/v1/orders") {
+      if (options.method === "POST") {
+        const body = JSON.parse(options.body);
+        return reply([{ id: "order-9", owner_id: ownerId, conversation_id: "conv-9", source: body.source, state: body.state, customer_name: body.customer_name, total_php: body.total_php, delivery_status: body.delivery_status }]);
+      }
+      return reply([]);
+    }
+    if (path === "/rest/v1/order_items") {
+      return reply([{ id: "item-9", order_id: "order-9", owner_id: ownerId, name: "Brownie box", quantity: 2, unit_price_php: 250 }]);
+    }
+    if (path === "/api/chat") {
+      return reply({ message: { content: '{"orders":[{"customer_name":"Lyn Ramos","items":[{"name":"Brownie box","quantity":2,"unit_price_php":250}],"total_php":500,"delivery_date":"2026-10-21","payment_status":"not_stated"}]}' } });
+    }
+    throw new Error(`Unexpected ${path} ${query.toString()}`);
+  };
+
+  const result = await handleChannels(
+    request("POST", "/api/conversations/11111111-1111-4111-8111-111111111111/retry", {}, { authorization: "Bearer owner-token" }),
+    { ...env, AI_PROVIDER: "ollama", OLLAMA_BASE_URL: "http://127.0.0.1:11434" },
+    fetchImpl,
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, "draft_ready");
+  assert.equal(result.body.order.source, "telegram");
+  assert.equal(result.body.order.customer_name, "Lyn Ramos");
+});

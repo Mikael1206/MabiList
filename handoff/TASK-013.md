@@ -54,6 +54,6 @@ cd /home/mikael/Philippine-StartUp-Challenge/backend && npm run check && npm tes
 
 ## Status
 
-- **State:** in progress
-- **Verify result:** pending
-- **Delivery Gate:** pending
+- **State:** complete
+- **Verify result:** pass
+- **Delivery Gate:** passed for the backend contract in this repo

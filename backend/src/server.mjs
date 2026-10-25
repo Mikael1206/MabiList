@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { getSession } from "./session.mjs";
 import { handleExtraction } from "./extractions.mjs";
 import { handleOrders } from "./orders.mjs";
-import { handleChannels } from "./channels.mjs";
+import { handleChannels, subscribeLogbook } from "./channels.mjs";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3001);
@@ -23,6 +23,11 @@ const server = createServer(async (request, response) => {
     response.setHeader("Cache-Control", "no-store");
     response.writeHead(result.status);
     response.end(JSON.stringify(result.body));
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/logbook/live") {
+    await subscribeLogbook(request, response, process.env, fetch);
     return;
   }
 
@@ -115,6 +120,22 @@ const server = createServer(async (request, response) => {
       response.writeHead(result.status);
       response.end(JSON.stringify(result.body));
     }
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/logbook/notify") {
+    const result = await handleChannels(request, process.env, fetch);
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.writeHead(result.status);
+    response.end(JSON.stringify(result.body));
+    return;
+  }
+
+  if (request.method === "POST" && /^\/api\/conversations\/[0-9a-f-]{36}\/retry$/i.test(url.pathname)) {
+    const result = await handleChannels(request, process.env, fetch);
+    response.setHeader("Content-Type", "application/json; charset=utf-8");
+    response.writeHead(result.status);
+    response.end(JSON.stringify(result.body));
     return;
   }
 

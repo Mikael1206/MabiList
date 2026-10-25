@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { randomUUID } from "node:crypto";
+import { extractOrders } from "./extract-orders.mjs";
 
 function error(status, code, message) {
   return { status, body: { error: { code, message } } };
@@ -16,6 +17,60 @@ function safeEqual(a, b) {
   const right = Buffer.from(b);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
+}
+
+const logbookSubscribers = new Map();
+
+export function broadcastLogbookUpdate(ownerId, eventName, payload = {}) {
+  const subscribers = logbookSubscribers.get(ownerId);
+  if (!subscribers || subscribers.size === 0) return 0;
+
+  const message = `event: ${eventName}\ndata: ${JSON.stringify({ owner_id: ownerId, type: eventName, payload })}\n\n`;
+  let delivered = 0;
+
+  for (const response of Array.from(subscribers)) {
+    try {
+      response.write(message);
+      delivered += 1;
+    } catch {
+      subscribers.delete(response);
+    }
+  }
+
+  if (subscribers.size === 0) {
+    logbookSubscribers.delete(ownerId);
+  }
+
+  return delivered;
+}
+
+export async function subscribeLogbook(request, response, env = process.env, fetchImpl = fetch) {
+  const owner = await ownerFromRequest(request, env, fetchImpl);
+  if (!owner) {
+    response.writeHead(401);
+    response.end(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "Please sign in." } }));
+    return;
+  }
+
+  response.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+  response.setHeader("Cache-Control", "no-cache, no-transform");
+  response.setHeader("Connection", "keep-alive");
+  response.setHeader("X-Accel-Buffering", "no");
+  response.writeHead(200);
+  response.write(`event: connected\ndata: ${JSON.stringify({ owner_id: owner.id, connected: true })}\n\n`);
+
+  const subscribers = logbookSubscribers.get(owner.id) ?? new Set();
+  subscribers.add(response);
+  logbookSubscribers.set(owner.id, subscribers);
+
+  request.on("close", () => {
+    const current = logbookSubscribers.get(owner.id);
+    if (!current) return;
+    current.delete(response);
+    if (current.size === 0) {
+      logbookSubscribers.delete(owner.id);
+    }
+  });
 }
 
 function readBody(request) {
@@ -142,6 +197,125 @@ async function ownerFromRequest(request, env, fetchImpl) {
   return /^[0-9a-f-]{36}$/i.test(user.id) ? { id: user.id, headers } : null;
 }
 
+async function getConversationWithOwner({ env, fetchImpl, ownerId, conversationId }) {
+  const url = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+  url.searchParams.set("select", "id,owner_id,connection_id,platform_thread_id,status,open_order_id,customer_name,window_start_at,last_message_at");
+  url.searchParams.set("id", `eq.${conversationId}`);
+  url.searchParams.set("owner_id", `eq.${ownerId}`);
+  const response = await fetchImpl(url, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+  if (!response.ok) throw new Error("Failed to fetch conversation");
+  const rows = await response.json();
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+async function getConversationMessages({ env, fetchImpl, conversationId }) {
+  const url = new URL("/rest/v1/chat_messages", env.SUPABASE_URL);
+  url.searchParams.set("select", "id,conversation_id,text,sent_at,platform_message_id");
+  url.searchParams.set("conversation_id", `eq.${conversationId}`);
+  url.searchParams.set("order", "sent_at.asc");
+  const response = await fetchImpl(url, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+  if (!response.ok) throw new Error("Failed to fetch chat messages");
+  const rows = await response.json();
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function getConnection({ env, fetchImpl, ownerId, connectionId }) {
+  const url = new URL("/rest/v1/channel_connections", env.SUPABASE_URL);
+  url.searchParams.set("select", "id,owner_id,platform,external_id,status");
+  url.searchParams.set("id", `eq.${connectionId}`);
+  url.searchParams.set("owner_id", `eq.${ownerId}`);
+  const response = await fetchImpl(url, { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` } });
+  if (!response.ok) throw new Error("Failed to fetch channel connection");
+  const rows = await response.json();
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+async function createConversationDraft({ env, fetchImpl, ownerId, conversation, chatText, orderData }) {
+  const provider = env.AI_PROVIDER ?? "ollama";
+  const extraction = await extractOrders(
+    { text: chatText },
+    {
+      provider,
+      ollamaBaseUrl: env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434",
+      fetchImpl,
+    },
+  );
+
+  const draft = extraction?.orders?.[0];
+  if (!draft) {
+    throw new Error("No order found in conversation extraction");
+  }
+
+  const orderBody = {
+    owner_id: ownerId,
+    upload_id: null,
+    conversation_id: conversation.id,
+    source: orderData.source,
+    state: "draft",
+    customer_name: draft.customer_name ?? null,
+    total_php: typeof draft.total_php === "number" ? draft.total_php : null,
+    delivery_date: draft.delivery_date ?? null,
+    payment_status: draft.payment_status ?? "not_stated",
+    delivery_status: "pending",
+    not_in_chat: [],
+    matches_order_id: null,
+    is_sample: false,
+    confirmed_at: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const orderResponse = await fetchImpl(new URL("/rest/v1/orders", env.SUPABASE_URL), {
+    method: "POST",
+    headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}`, "content-type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify(orderBody),
+  });
+  if (!orderResponse.ok) throw new Error("Failed to create order draft");
+  const orderRows = await orderResponse.json();
+  const createdOrder = Array.isArray(orderRows) && orderRows[0] ? orderRows[0] : { ...orderBody, id: randomUUID() };
+
+  const mappedItems = (draft.items ?? []).map((item, index) => ({
+    id: randomUUID(),
+    order_id: createdOrder.id,
+    owner_id: ownerId,
+    name: String(item.name ?? "Order item").trim() || "Order item",
+    quantity: Number.isInteger(item.quantity) && item.quantity > 0 ? item.quantity : 1,
+    unit_price_php: typeof item.unit_price_php === "number" && Number.isFinite(item.unit_price_php) ? item.unit_price_php : null,
+    index,
+  }));
+
+  if (mappedItems.length) {
+    const response = await fetchImpl(new URL("/rest/v1/order_items", env.SUPABASE_URL), {
+      method: "POST",
+      headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}`, "content-type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(mappedItems),
+    });
+    if (!response.ok) throw new Error("Failed to create order items");
+  }
+
+  const patchUrl = new URL("/rest/v1/conversations", env.SUPABASE_URL);
+  patchUrl.searchParams.set("id", `eq.${conversation.id}`);
+  const patchResponse = await fetchImpl(patchUrl, {
+    method: "PATCH",
+    headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ status: "draft_ready", failure_reason: null, updated_at: new Date().toISOString() }),
+  });
+  if (!patchResponse.ok) throw new Error("Failed to update conversation status");
+
+  broadcastLogbookUpdate(ownerId, "conversation_status", {
+    conversation_id: conversation.id,
+    status: "draft_ready",
+  });
+  broadcastLogbookUpdate(ownerId, "draft_ready", {
+    id: createdOrder.id ?? randomUUID(),
+    source: orderData.source,
+    conversation_id: conversation.id,
+    customer_name: createdOrder.customer_name ?? draft.customer_name ?? null,
+  });
+
+  return { status: "draft_ready", order: { ...createdOrder, source: orderData.source, customer_name: createdOrder.customer_name ?? draft.customer_name ?? null }, createdAt: new Date().toISOString() };
+}
+
 export async function handleChannels(request, env = process.env, fetchImpl = fetch) {
   try {
     const url = new URL(request.url, `http://${request.headers.host ?? "127.0.0.1"}`);
@@ -235,6 +409,29 @@ export async function handleChannels(request, env = process.env, fetchImpl = fet
       return { status: 204 };
     }
 
+    if (request.method === "POST" && /^\/api\/conversations\/[0-9a-f-]{36}\/retry$/i.test(url.pathname)) {
+      const owner = await ownerFromRequest(request, env, fetchImpl);
+      if (!owner) return error(401, "UNAUTHENTICATED", "Please sign in.");
+      const conversationId = url.pathname.split("/").at(-2);
+      const conversation = await getConversationWithOwner({ env, fetchImpl, ownerId: owner.id, conversationId });
+      if (!conversation) return error(404, "NOT_FOUND", "Conversation not found.");
+
+      const connection = await getConnection({ env, fetchImpl, ownerId: owner.id, connectionId: conversation.connection_id });
+      const source = connection?.platform === "telegram" ? "telegram" : connection?.platform === "instagram" ? "instagram" : "messenger";
+      const messages = await getConversationMessages({ env, fetchImpl, conversationId });
+      const chatText = messages.map((message) => message.text || "").filter(Boolean).join("\n");
+      if (!chatText) {
+        return error(400, "VALIDATION_ERROR", "Conversation has no readable text.");
+      }
+
+      try {
+        const result = await createConversationDraft({ env, fetchImpl, ownerId: owner.id, conversation, chatText, orderData: { source } });
+        return { status: 200, body: result };
+      } catch (errorCause) {
+        return error(500, "INTERNAL_ERROR", errorCause?.message || "Could not retry this conversation.");
+      }
+    }
+
     if (request.method === "POST" && url.pathname === "/api/connections/telegram") {
       const owner = await ownerFromRequest(request, env, fetchImpl);
       if (!owner) return error(401, "UNAUTHENTICATED", "Please sign in.");
@@ -265,6 +462,17 @@ export async function handleChannels(request, env = process.env, fetchImpl = fet
       });
 
       return { status: 200, body: { ok: true, connection } };
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/logbook/notify") {
+      const owner = await ownerFromRequest(request, env, fetchImpl);
+      if (!owner) return error(401, "UNAUTHENTICATED", "Please sign in.");
+      const payload = await readBody(request);
+      const type = typeof payload?.type === "string" ? payload.type : "";
+      if (!type) return error(400, "INVALID_BODY", "Event type is required.");
+
+      const delivered = broadcastLogbookUpdate(owner.id, type, payload?.payload ?? {});
+      return { status: 200, body: { ok: true, delivered, owner_id: owner.id } };
     }
 
     return error(404, "NOT_FOUND", "Route not found.");

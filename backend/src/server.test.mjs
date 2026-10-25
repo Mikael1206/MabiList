@@ -181,3 +181,75 @@ test("order and expiry routes are routed through the backend with owner checks",
     await Promise.all([once(child, "exit"), once(upstream, "close")]);
   }
 });
+
+test("owner-scoped logbook stream accepts a session and publishes draft updates", async () => {
+  const upstream = createServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    if (request.url === "/auth/v1/user") {
+      response.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" }));
+      return;
+    }
+    response.writeHead(404).end("{}");
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+
+  const child = spawn(process.execPath, ["src/server.mjs"], {
+    cwd: new URL("..", import.meta.url),
+    env: {
+      ...process.env,
+      HOST: "127.0.0.1",
+      PORT: "0",
+      SUPABASE_URL: `http://127.0.0.1:${upstream.address().port}`,
+      SUPABASE_PUBLISHABLE_KEY: "public-key",
+    },
+  });
+
+  try {
+    const [chunk] = await once(child.stdout, "data");
+    const port = Number(chunk.toString().match(/:(\d+)\n/)?.[1]);
+    assert.ok(port > 0);
+    const base = `http://127.0.0.1:${port}`;
+
+    const stream = await fetch(`${base}/api/logbook/live`, {
+      headers: { Authorization: "Bearer valid-token" },
+    });
+    assert.equal(stream.status, 200);
+    assert.match(stream.headers.get("content-type") ?? "", /text\/event-stream/);
+
+    const reader = stream.body.getReader();
+    const textDecoder = new TextDecoder();
+    let connectedData = "";
+    let payload = "";
+
+    while (!connectedData.includes("connected") && !payload.includes("draft_ready")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunkText = textDecoder.decode(value, { stream: true });
+      connectedData += chunkText;
+      if (chunkText.includes("draft_ready") || chunkText.includes("connected")) {
+        payload = chunkText;
+      }
+    }
+
+    const published = await fetch(`${base}/api/logbook/notify`, {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-token", "content-type": "application/json" },
+      body: JSON.stringify({ type: "draft_ready", payload: { id: "order-9", source: "messenger" } }),
+    });
+    assert.equal(published.status, 200);
+    assert.deepEqual(await published.json(), { ok: true, delivered: 1, owner_id: "11111111-1111-4111-8111-111111111111" });
+
+    while (!payload.includes("draft_ready")) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      payload += textDecoder.decode(value, { stream: true });
+    }
+
+    assert.match(payload, /draft_ready/);
+  } finally {
+    child.kill();
+    upstream.close();
+    await Promise.all([once(child, "exit"), once(upstream, "close")]);
+  }
+});
