@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fixtures } from './fixtures.mjs';
 import { scoreCase, summarize } from './score.mjs';
+import { classifyProviderFailure, getMissingProviderConfig, buildOfflineReport } from './provider-status.mjs';
 
 test('fixture set is 30 distinct synthetic conversations with labeled fields', () => {
   assert.equal(fixtures.length, 30);
@@ -35,4 +36,13 @@ test('item order does not change the score, but extra output fields invalidate i
   assert.equal(Object.values(scoreCase(expected, reversed).correct).every(Boolean), true);
   reversed.orders[0].phone = 'fake';
   assert.equal(scoreCase(expected, reversed).invalid, true);
+});
+
+test('provider failures are classified as blocked instead of hard task failures', () => {
+  assert.equal(classifyProviderFailure(new Error('Provider HTTP 402')).status, 'blocked');
+  assert.equal(classifyProviderFailure(new Error('Provider returned invalid JSON')).status, 'failed_case');
+  assert.deepEqual(getMissingProviderConfig('gemini', {}), ['GEMINI_API_KEY']);
+  const offline = buildOfflineReport({ provider: 'mock', fixtures: fixtures.slice(0, 2) });
+  assert.equal(offline.status, 'offline');
+  assert.equal(offline.casesDetail.length, 2);
 });

@@ -10,6 +10,8 @@
     "test": "node --test src/*.test.mjs eval/*.test.mjs",
     "eval:fixtures": "node eval/render-fixtures.mjs && bash eval/convert-fixtures.sh",
     "eval": "node --env-file=.env eval/run.mjs",
-    "eval:ocr": "node --env-file=.env eval/run-ocr.mjs"
+    "eval:mock": "node eval/run.mjs --provider=mock",
+    "eval:ocr": "node --env-file=.env eval/run-ocr.mjs",
+    "eval:ocr:mock": "node eval/run-ocr.mjs --provider=mock"
   }
 }
