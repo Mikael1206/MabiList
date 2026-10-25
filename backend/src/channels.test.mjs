@@ -142,3 +142,33 @@ test("channel expiry job and disconnect route clean up owner-scoped records", as
   assert.equal(disconnected.status, 204);
   assert.equal(disconnected.body, undefined);
 });
+
+test("connect routes validate ownership and store linked channel records", async () => {
+  const fetchImpl = async (url, options = {}) => {
+    const path = new URL(url).pathname;
+    if (path === "/auth/v1/user") return reply({ id: ownerId, email: "owner@example.com" });
+    if (path === "/rest/v1/channel_connections") {
+      if (options.method === "POST") return reply([{ id: "conn-4", owner_id: ownerId, platform: "telegram", external_id: "bot-42", display_name: "Demo Bot", status: "active" }]);
+      return reply([{ id: "conn-4", owner_id: ownerId, platform: "telegram", external_id: "bot-42", display_name: "Demo Bot", status: "active" }]);
+    }
+    if (path === "/rest/v1/channel_secrets") {
+      return reply([{ id: "secret-1", connection_id: "conn-4", access_token: "token-abc" }]);
+    }
+    throw new Error(`Unexpected ${path}`);
+  };
+
+  const missing = await handleChannels(
+    request("POST", "/api/connections/telegram", { bot_token: "token-abc" }, {}),
+    env,
+    fetchImpl,
+  );
+  assert.equal(missing.status, 401);
+
+  const connected = await handleChannels(
+    request("POST", "/api/connections/telegram", { bot_token: "token-abc", display_name: "Demo Bot" }, { authorization: "Bearer owner-token" }),
+    env,
+    fetchImpl,
+  );
+  assert.equal(connected.status, 200);
+  assert.equal(connected.body.connection.platform, "telegram");
+});

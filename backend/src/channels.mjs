@@ -235,6 +235,38 @@ export async function handleChannels(request, env = process.env, fetchImpl = fet
       return { status: 204 };
     }
 
+    if (request.method === "POST" && url.pathname === "/api/connections/telegram") {
+      const owner = await ownerFromRequest(request, env, fetchImpl);
+      if (!owner) return error(401, "UNAUTHENTICATED", "Please sign in.");
+      const payload = await readBody(request);
+      const token = typeof payload?.bot_token === "string" ? payload.bot_token : "";
+      if (!token) return error(400, "INVALID_BODY", "Telegram bot token is required.");
+
+      const connectionId = randomUUID();
+      const connectionResponse = await fetchImpl(new URL("/rest/v1/channel_connections", env.SUPABASE_URL), {
+        method: "POST",
+        headers: { ...owner.headers, "content-type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({
+          id: connectionId,
+          owner_id: owner.id,
+          platform: "telegram",
+          external_id: `bot-${connectionId.slice(0, 8)}`,
+          display_name: typeof payload?.display_name === "string" ? payload.display_name : "Telegram Bot",
+          status: "active",
+        }),
+      });
+      if (!connectionResponse.ok) throw new Error("Failed to create channel connection");
+      const connection = (await connectionResponse.json())[0] ?? { id: connectionId, owner_id: owner.id, platform: "telegram", display_name: "Telegram Bot" };
+
+      await fetchImpl(new URL("/rest/v1/channel_secrets", env.SUPABASE_URL), {
+        method: "POST",
+        headers: { ...owner.headers, "content-type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({ connection_id: connection.id, access_token: token, webhook_secret: token }),
+      });
+
+      return { status: 200, body: { ok: true, connection } };
+    }
+
     return error(404, "NOT_FOUND", "Route not found.");
   } catch (errorCause) {
     return error(500, "INTERNAL_ERROR", errorCause?.message || "Could not process this webhook.");

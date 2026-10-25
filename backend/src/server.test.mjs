@@ -98,9 +98,25 @@ test("mock webhook accepts a signed demo payload and acknowledges it", async () 
 test("order and expiry routes are routed through the backend with owner checks", async () => {
   const upstream = createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
-    if (request.headers.authorization !== "Bearer valid-token") {
+    const auth = request.headers.authorization ?? "";
+    if (request.url === "/auth/v1/user" && auth !== "Bearer valid-token") {
       response.writeHead(401).end("{}");
-    } else if (request.url === "/auth/v1/user") {
+      return;
+    }
+    if (request.url?.startsWith("/rest/v1/orders") && auth !== "Bearer valid-token") {
+      response.writeHead(401).end("{}");
+      return;
+    }
+    if (request.url?.startsWith("/rest/v1/order_items") && auth !== "Bearer valid-token") {
+      response.writeHead(401).end("{}");
+      return;
+    }
+    if (request.url?.startsWith("/rest/v1/uploads") && !["Bearer valid-token", "Bearer public-key"].includes(auth)) {
+      response.writeHead(401).end("{}");
+      return;
+    }
+
+    if (request.url === "/auth/v1/user") {
       response.end(JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", email: "owner@example.com" }));
     } else if (request.url?.startsWith("/rest/v1/orders")) {
       if (request.method === "POST") {

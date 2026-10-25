@@ -62,7 +62,11 @@ export async function handleOrders(request, env = process.env, fetchImpl = fetch
     if (request.method === "POST" && url.pathname === "/api/jobs/expire-uploads") {
       const secret = request.headers["x-job-secret"];
       if (secret !== env.EXPIRE_UPLOADS_SECRET) return error(401, "UNAUTHENTICATED", "Invalid job secret.");
-      const { rows } = await db(env, {}, "uploads", { query: { status: "eq.expired", select: "id" } }, fetchImpl);
+
+      const serviceHeaders = env.SUPABASE_PUBLISHABLE_KEY
+        ? { apikey: env.SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${env.SUPABASE_PUBLISHABLE_KEY}` }
+        : {};
+      const { rows } = await db(env, serviceHeaders, "uploads", { query: { status: "eq.expired", select: "id" } }, fetchImpl);
       return { status: 200, body: { ok: true, expired: rows.length } };
     }
 
