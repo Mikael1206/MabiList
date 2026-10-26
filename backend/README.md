@@ -78,8 +78,6 @@ misread prices, quantities, speaker labels, and corrections. The same rethink li
 For Cloudflare, this OCR-first runner uses `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (a text
 model); the image-first evaluator continues to use the vision model.
 
-<<<<<<< Updated upstream
-=======
 ## TASK-003 extraction route
 
 Set `DAILY_EXTRACTION_LIMIT` to a positive integer in the backend environment along with the
@@ -104,7 +102,6 @@ is still under TASK-003 verification: real signed-in Storage and upload tests, r
 multiple-order/no-order handling, and frontend review of nullable draft quantities remain open. Use synthetic chats
 only while INV-011's real-data gate and TASK-001 accuracy target remain open.
 
->>>>>>> Stashed changes
 For a Hugging Face OCR-first evaluation, set `HF_TOKEN` in `backend/.env` and run
 `npm run eval:ocr -- --provider=huggingface --limit=1` first. It calls Qwen3-8B through
 `https://router.huggingface.co/v1/chat/completions`; see the
