@@ -243,18 +243,25 @@ test("owner-scoped logbook stream isolates updates by authenticated owner", asyn
     let ownerEvents = "";
     let otherEvents = "";
 
-    for (let i = 0; i < 12; i += 1) {
-      const ownerResult = await ownerReader.read();
-      const otherResult = await otherReader.read();
-      if (!ownerResult.done) ownerEvents += textDecoder.decode(ownerResult.value, { stream: true });
-      if (!otherResult.done) otherEvents += textDecoder.decode(otherResult.value, { stream: true });
-      if (ownerEvents.includes("conversation_status") || otherEvents.includes("conversation_status")) {
-        break;
-      }
+    const readWithTimeout = async (reader, timeoutMs) => {
+      const timer = new Promise((resolve) => setTimeout(() => resolve({ done: true, value: undefined }), timeoutMs));
+      const result = await Promise.race([reader.read(), timer]);
+      return result;
+    };
+
+    for (let i = 0; i < 8; i += 1) {
+      const ownerResult = await readWithTimeout(ownerReader, 250);
+      const otherResult = await readWithTimeout(otherReader, 150);
+      if (!ownerResult.done && ownerResult.value) ownerEvents += textDecoder.decode(ownerResult.value, { stream: true });
+      if (!otherResult.done && otherResult.value) otherEvents += textDecoder.decode(otherResult.value, { stream: true });
+      if (ownerEvents.includes("conversation_status")) break;
+      if (otherEvents.includes("conversation_status")) break;
     }
 
     assert.match(ownerEvents, /conversation_status/);
     assert.doesNotMatch(otherEvents, /conversation_status/);
+    await ownerReader.cancel();
+    await otherReader.cancel();
   } finally {
     child.kill();
     upstream.close();
