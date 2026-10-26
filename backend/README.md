@@ -2,7 +2,9 @@
 
 This is the server workspace. It owns future API routes, input validation, order rules,
 extraction, all Supabase product-data reads and writes, cleanup jobs, and server-only credentials. It imports no code from
-`web/`. Implemented routes are `GET /health` and `GET /api/session`; product routes are still pending.
+`web/`. Implemented routes are `GET /health`, `GET /api/session`, `POST /api/extractions`,
+`POST /api/extractions/{uploadId}/retry`, and owner-authenticated
+`GET /api/uploads/{uploadId}/source`. The extraction route stores review drafts only.
 
 Run it locally with `npm run dev` from this directory. The default address is
 `http://127.0.0.1:3001`; `HOST` and `PORT` can override it. No install step is needed yet because
@@ -85,6 +87,7 @@ Supabase and Cloudflare credentials. The route accepts JSON `{ "kind": "text", "
 or multipart `kind=image` with repeated PNG `files` (10 MB total, up to five files). It checks
 the Supabase access token before reading the body, stores the raw source under the verified
 owner, runs Tesseract `eng+fil` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
+owner, runs Tesseract `eng+tgl` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
 The response contains a review draft and temporary source preview. It never confirms an order.
 The same bearer token is used for database and private Storage calls, with row-level security
 and owner filters. The source preview endpoint streams the first screenshot while the upload

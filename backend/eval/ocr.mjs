@@ -25,6 +25,7 @@ export async function readScreenshot(path) {
 export async function readScreenshotBytes(bytes) {
   return new Promise((resolve, reject) => {
     const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+fil']);
+    const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+tgl']);
     let output = '';
     let errors = '';
     child.stdout.setEncoding('utf8');

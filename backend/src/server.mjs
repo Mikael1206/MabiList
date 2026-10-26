@@ -117,6 +117,15 @@ const server = createServer(async (request, response) => {
       response.end(result.binary);
     } else {
       response.setHeader("Content-Type", "application/json; charset=utf-8");
+  if ((request.method === 'POST' && (request.url === '/api/extractions' || /^\/api\/extractions\/[0-9a-f-]{36}\/retry$/i.test(request.url))) ||
+      (request.method === 'GET' && /^\/api\/uploads\/[0-9a-f-]{36}\/source$/i.test(request.url))) {
+    const result = await handleExtraction(request);
+    response.setHeader('Cache-Control', 'no-store');
+    if (result.binary) {
+      response.setHeader('Content-Type', result.contentType);
+      response.writeHead(result.status);
+      response.end(result.binary);
+    } else {
       response.writeHead(result.status);
       response.end(JSON.stringify(result.body));
     }

@@ -7,6 +7,19 @@ import type { Order, Stats } from "./types";
 
 const itemKey = (name: string) => name.trim().toLowerCase().replace(/\s+/g, " ");
 
+/** Details a confirmed order is still missing. Any gap keeps it under "Needs your check". */
+export function missingDetails(order: Order): string[] {
+  if (order.state !== "confirmed") return [];
+  const missing: string[] = [];
+  if (order.total_php === null) missing.push("price");
+  if (order.delivery_date === null) missing.push("delivery date");
+  if (order.payment_status === "not_stated") missing.push("payment");
+  return missing;
+}
+
+/** "Needs your check": every draft, plus confirmed orders with missing details (2026-10-23). */
+export const needsCheck = (order: Order) => order.state === "draft" || missingDetails(order).length > 0;
+
 /** Monday of the week containing `date` (YYYY-MM-DD). */
 export function mondayOf(date: string): string {
   const weekday = new Date(`${date}T00:00:00Z`).getUTCDay(); // 0 = Sunday
@@ -53,7 +66,7 @@ export function computeStats(orders: Order[], now = new Date()): Stats {
     week_by_day,
     still_owed: unpaidPriced.reduce((sum, o) => sum + o.total_php!, 0),
     still_owed_orders: unpaidPriced.length,
-    needs_check: orders.filter((o) => o.state === "draft").length,
+    needs_check: orders.filter(needsCheck).length,
     waiting_for_payment: confirmed.filter((o) => o.payment_status === "unpaid").length,
     paid: confirmed.filter((o) => o.payment_status === "paid").length,
     delivered: confirmed.filter((o) => o.delivery_status === "delivered").length,

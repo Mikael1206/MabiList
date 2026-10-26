@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AppHeader, ErrorNote, Eyebrow, SampleBadge, btn } from "@/components/ui";
-import { IS_MOCK, getStats } from "@/lib/api";
+import { IS_MOCK, SHOW_DEV_TOOLS, getStats } from "@/lib/api";
 import { addDays, longDate, peso, shortDate, todayManila } from "@/lib/format";
 import type { Stats } from "@/lib/types";
 
@@ -104,7 +104,7 @@ export default function TotalsPage() {
                   No confirmed sales with a price this week yet.
                 </p>
               )}
-              {IS_MOCK && (
+              {SHOW_DEV_TOOLS && (
                 <button type="button" onClick={() => setPreviewEmpty((p) => !p)} className={`${btn.link} mt-2 min-h-11`}>
                   {previewEmpty ? "Show sample totals" : "Preview a period with no sales"}
                 </button>
