@@ -92,6 +92,48 @@ test('Hugging Face rejects image input and invalid extraction output', async () 
   }), /invalid JSON/);
 });
 
+test('Ollama uses a local free model and reads chat JSON output', async () => {
+  let request;
+  const fetchImpl = async (url, options) => {
+    request = { url, options };
+    return { ok: true, json: async () => ({ message: { content: JSON.stringify(result) } }) };
+  };
+  assert.deepEqual(await extractOrders({ text: 'Buyer: 2 loaves' }, {
+    provider: 'ollama', ollamaBaseUrl: 'http://127.0.0.1:11434', ollamaModel: 'llama3.2:3b', fetchImpl,
+  }), result);
+  assert.equal(request.url, 'http://127.0.0.1:11434/api/chat');
+  const body = JSON.parse(request.options.body);
+  assert.equal(body.model, 'llama3.2:3b');
+  assert.match(body.messages[0].content, /Buyer: 2 loaves/);
+  assert.equal(body.options.temperature, 0);
+});
+
+test('Ollama partial output is normalized to the required schema', async () => {
+  const partial = {
+    orders: [{
+      customer_name: null,
+      items: [{ name: 'ube pandesal', quantity: 12, unit_price_php: 15 }],
+      total_php: 360,
+      payment_status: 'paid',
+    }],
+  };
+  const normalized = await extractOrders({ text: 'Buyer: 2 loaves' }, {
+    provider: 'ollama',
+    ollamaBaseUrl: 'http://127.0.0.1:11434',
+    ollamaModel: 'llama3.2:3b',
+    fetchImpl: async () => ({ ok: true, json: async () => ({ message: { content: JSON.stringify(partial) } }) }),
+  });
+  assert.deepEqual(normalized, {
+    orders: [{
+      customer_name: null,
+      items: [{ name: 'ube pandesal', quantity: 12, unit_price_php: 15 }],
+      total_php: 360,
+      delivery_date: null,
+      payment_status: 'paid',
+    }],
+  });
+});
+
 test('provider failures and invalid JSON do not become extraction results', async () => {
   await assert.rejects(
     extractOrders({ text: 'synthetic' }, { provider: 'gemini', geminiApiKey: 'test', fetchImpl: async () => ({ ok: false, status: 429, json: async () => ({}) }) }),

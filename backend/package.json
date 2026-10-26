@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "node --watch src/server.mjs",
+    "start": "node src/server.mjs",
+    "check": "node --check src/server.mjs && node --check src/session.mjs && node --check src/channels.mjs && node --check src/extractions.mjs && node --check src/extract-orders.mjs && node --check eval/run.mjs && node --check eval/run-ocr.mjs && node --check eval/ocr.mjs && node --check eval/render-fixtures.mjs",
     "dev": "node --env-file-if-exists=.env --watch src/server.mjs",
     "start": "node --env-file-if-exists=.env src/server.mjs",
     "check": "node --check src/server.mjs && node --check src/session.mjs && node --check src/extractions.mjs && node --check src/extract-orders.mjs && node --check eval/run.mjs && node --check eval/run-ocr.mjs && node --check eval/ocr.mjs && node --check eval/render-fixtures.mjs",
     "test": "node --test src/*.test.mjs eval/*.test.mjs",
     "eval:fixtures": "node eval/render-fixtures.mjs && bash eval/convert-fixtures.sh",
     "eval": "node --env-file=.env eval/run.mjs",
-    "eval:ocr": "node --env-file=.env eval/run-ocr.mjs"
+    "eval:mock": "node eval/run.mjs --provider=mock",
+    "eval:ocr": "node --env-file=.env eval/run-ocr.mjs",
+    "eval:ocr:mock": "node eval/run-ocr.mjs --provider=mock"
   }
 }

@@ -1,6 +1,7 @@
 const GEMINI_MODEL = 'gemini-3.6-flash';
 const CLOUDFLARE_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const HUGGINGFACE_MODEL = 'Qwen/Qwen3-8B';
+const OLLAMA_MODEL = 'llama3.2:3b';
 
 const orderSchema = {
   type: 'object', additionalProperties: false,
@@ -45,10 +46,35 @@ export function validExtraction(data) {
     (item.unit_price_php === null || (typeof item.unit_price_php === 'number' && Number.isFinite(item.unit_price_php) && item.unit_price_php >= 0)));
 }
 
+function normalizeExtraction(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || !data.orders || !Array.isArray(data.orders)) return data;
+  return {
+    orders: data.orders.map((order) => {
+      if (!order || typeof order !== 'object' || Array.isArray(order)) return order;
+      const items = Array.isArray(order.items) ? order.items.map((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+        return {
+          name: typeof item.name === 'string' ? item.name : '',
+          quantity: Number.isInteger(item.quantity) && item.quantity > 0 ? item.quantity : null,
+          unit_price_php: typeof item.unit_price_php === 'number' && Number.isFinite(item.unit_price_php) && item.unit_price_php >= 0 ? item.unit_price_php : null,
+        };
+      }) : [];
+      return {
+        customer_name: order.customer_name ?? null,
+        items,
+        total_php: typeof order.total_php === 'number' && Number.isFinite(order.total_php) ? order.total_php : null,
+        delivery_date: typeof order.delivery_date === 'string' ? order.delivery_date : null,
+        payment_status: ['paid', 'unpaid', 'not_stated'].includes(order.payment_status) ? order.payment_status : 'not_stated',
+      };
+    }),
+  };
+}
+
 function checkedExtraction(output) {
   const parsed = typeof output === 'string' ? responseText(output) : output;
-  if (!validExtraction(parsed)) throw new Error('Provider returned an invalid single-order extraction');
-  return parsed;
+  const normalized = normalizeExtraction(parsed);
+  if (!validExtraction(normalized)) throw new Error('Provider returned an invalid single-order extraction');
+  return normalized;
 }
 
 async function postJson(url, headers, body, timeoutMs, fetchImpl) {
@@ -71,7 +97,8 @@ export async function extractOrders(
   { provider, geminiApiKey = process.env.GEMINI_API_KEY, cloudflareAccountId = process.env.CLOUDFLARE_ACCOUNT_ID,
     cloudflareAuthToken = process.env.CLOUDFLARE_AUTH_TOKEN, cloudflareModel = CLOUDFLARE_MODEL,
     huggingFaceToken = process.env.HF_TOKEN, huggingFaceModel = HUGGINGFACE_MODEL,
-    timeoutMs = 45000, fetchImpl = fetch } = {},
+    ollamaBaseUrl = process.env.OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434',
+    ollamaModel = process.env.OLLAMA_MODEL ?? OLLAMA_MODEL, timeoutMs = 45000, fetchImpl = fetch } = {},
 ) {
   if (!images.length && !text) throw new TypeError('An image or chat text is required');
   if (provider === 'gemini') {
@@ -115,6 +142,24 @@ export async function extractOrders(
       timeoutMs, fetchImpl,
     );
     return checkedExtraction(data.choices?.[0]?.message?.content);
+  }
+  if (provider === 'ollama') {
+    if (images.length) throw new Error('Ollama adapter accepts OCR text only');
+    const baseUrl = ollamaBaseUrl;
+    const model = ollamaModel;
+    const data = await postJson(
+      `${baseUrl.replace(/\/$/, '')}/api/chat`,
+      {},
+      {
+        model,
+        messages: [{ role: 'user', content: `${instructions}\n\nChat text:\n${text}` }],
+        stream: false,
+        options: { temperature: 0, seed: 42 },
+      },
+      timeoutMs,
+      fetchImpl,
+    );
+    return checkedExtraction(data.message?.content);
   }
   throw new TypeError(`Unknown provider: ${provider}`);
 }

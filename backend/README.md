@@ -62,16 +62,16 @@ end-to-end timing still needs the extraction route. The runner is an evaluation 
 not write to Supabase or choose a production provider automatically. Record actual results in
 `work/evidence-ledger.md` and make the ADR-008 choice only after both runs.
 
-To compare an OCR-first path, install Tesseract with English and Tagalog data (on Arch/CachyOS:
-`sudo pacman -S tesseract tesseract-data-eng tesseract-data-tgl`; on Ubuntu/Debian, install
-`tesseract-ocr`, `tesseract-ocr-eng`, and `tesseract-ocr-tgl`) and run `npm run eval:fixtures`, then
+To compare an OCR-first path, install Tesseract with English and Filipino data (on Arch/CachyOS:
+`sudo pacman -S tesseract tesseract-data-eng tesseract-data-fil`; on Ubuntu/Debian, install
+`tesseract-ocr`, `tesseract-ocr-eng`, and `tesseract-ocr-fil`) and run `npm run eval:fixtures`, then
 `npm run eval:ocr -- --provider=gemini` from `backend/`. Add `--limit=1` for a smoke test;
 `--provider=cloudflare` uses the Cloudflare text extraction adapter; `--provider=huggingface`
 uses the `Qwen/Qwen3-8B` text adapter and requires `HF_TOKEN` in the ignored `.env`. Start with
 `--limit=1`; only expand after the smoke test succeeds and Hugging Face usage/billing allows it.
 The Hugging Face adapter uses its OpenAI-compatible Inference Providers API with JSON-object
 output mode. This runner reads
-each PNG with local Tesseract OCR using both `eng` and `tgl`, sends **only the OCR transcript** to the AI provider, and
+each PNG with local Tesseract OCR using both `eng` and `fil`, sends **only the OCR transcript** to the AI provider, and
 reports normalized character accuracy against the synthetic dialogue plus order-field accuracy.
 It saves OCR transcripts, per-case scores, OCR time, and total OCR-plus-AI time in ignored
 `eval/generated/results-ocr-<provider>.json`. OCR failures count as failed extractions. The
@@ -86,6 +86,7 @@ Set `DAILY_EXTRACTION_LIMIT` to a positive integer in the backend environment al
 Supabase and Cloudflare credentials. The route accepts JSON `{ "kind": "text", "text": "..." }`
 or multipart `kind=image` with repeated PNG `files` (10 MB total, up to five files). It checks
 the Supabase access token before reading the body, stores the raw source under the verified
+owner, runs Tesseract `eng+fil` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
 owner, runs Tesseract `eng+tgl` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
 The response contains a review draft and temporary source preview. It never confirms an order.
 The same bearer token is used for database and private Storage calls, with row-level security
