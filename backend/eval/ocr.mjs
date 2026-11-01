@@ -24,7 +24,8 @@ export async function readScreenshot(path) {
 
 export async function readScreenshotBytes(bytes) {
   return new Promise((resolve, reject) => {
-    const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+tgl']);
+    // Windows installers don't add Tesseract to PATH; TESSERACT_LANGS lets a machine without tgl data still run.
+    const child = spawn(process.env.TESSERACT_PATH || 'tesseract', ['stdin', 'stdout', '--psm', '6', '-l', process.env.TESSERACT_LANGS || 'eng+tgl']);
     let output = '';
     let errors = '';
     child.stdout.setEncoding('utf8');
