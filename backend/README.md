@@ -27,13 +27,13 @@ download checks remain for integration.
 `docs/sdd.md` §2 owns the HTTP contract. `web/lib/types.ts` is the frontend's local view of
 that contract; the backend will define and validate its own request data when routes are added.
 There is no shared source package. An HTTP contract change needs review from both developers.
-The frontend currently uses `web/lib/api/mock.ts` through `web/lib/api/index.ts`; it does not
-call this process yet.
-
-Before connecting the apps, establish same-origin `/api` routing to this service. The frontend
-session layer can forward a verified access token to the backend; the browser-facing cookie and
-refresh flow are still integration work. Hosting also remains open after ADR-014. Never put a
-service key in `web/` or rely on an owner ID sent by the browser.
+The frontend calls this process through `web/lib/api/index.ts`; `web/next.config.ts` forwards
+same-origin `/api/*` to `BACKEND_URL` (default `http://127.0.0.1:3001`). The browser signs in with
+Supabase Auth and sends its access token as `Authorization: Bearer`. Order routes:
+`GET /api/orders`, `GET|PATCH|DELETE /api/orders/{id}`, `POST /api/orders`,
+`POST /api/orders/{id}/confirm`, and `PATCH /api/session` (`{shop_name}`). Confirming or
+deleting a draft deletes its raw text and screenshots (INV-001). Hosting remains open after
+ADR-014. Never put a service key in `web/` or rely on an owner ID sent by the browser.
 
 ## TASK-001 accuracy spike
 
@@ -86,7 +86,6 @@ Set `DAILY_EXTRACTION_LIMIT` to a positive integer in the backend environment al
 Supabase and Cloudflare credentials. The route accepts JSON `{ "kind": "text", "text": "..." }`
 or multipart `kind=image` with repeated PNG `files` (10 MB total, up to five files). It checks
 the Supabase access token before reading the body, stores the raw source under the verified
-owner, runs Tesseract `eng+fil` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
 owner, runs Tesseract `eng+tgl` for screenshots, and sends OCR text to Cloudflare Llama 3.3.
 The response contains a review draft and temporary source preview. It never confirms an order.
 The same bearer token is used for database and private Storage calls, with row-level security
