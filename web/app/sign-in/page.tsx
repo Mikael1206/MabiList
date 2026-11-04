@@ -36,8 +36,12 @@ export default function SignInPage() {
       setError("Type your email above first, then tap Forgot password.");
       return;
     }
-    await requestPasswordReset(email.trim());
-    setResetSentTo(email.trim());
+    try {
+      await requestPasswordReset(email.trim());
+      setResetSentTo(email.trim());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "We couldn’t reach MabiList. Check your connection and try again.");
+    }
   }
 
   return (
@@ -53,7 +57,7 @@ export default function SignInPage() {
           {error && <ErrorNote>{error}</ErrorNote>}
           {resetSentTo && (
             <p className="rounded-[10px] border-l-4 border-amber bg-[#f5e6cc] px-4 py-3 font-body text-base">
-              Password reset instructions would be sent to <strong>{resetSentTo}</strong>.
+              If there’s an account, password reset instructions were sent to <strong>{resetSentTo}</strong>.
             </p>
           )}
         </div>

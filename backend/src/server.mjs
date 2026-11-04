@@ -1,11 +1,27 @@
 import { createServer } from "node:http";
-import { getSession } from "./session.mjs";
+import { getSession, updateShopName } from "./session.mjs";
 import { handleExtraction } from "./extractions.mjs";
 import { handleOrders } from "./orders.mjs";
 import { handleChannels, subscribeLogbook } from "./channels.mjs";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3001);
+
+/** Small JSON bodies only (settings); null when the body is missing, too big or not JSON. */
+async function readJson(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 16 * 1024) return null;
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host ?? "127.0.0.1"}`);
@@ -17,9 +33,11 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === "GET" && url.pathname === "/api/session") {
+  if ((request.method === "GET" || request.method === "PATCH") && url.pathname === "/api/session") {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
-    const result = await getSession(request.headers.authorization, process.env);
+    const result = request.method === "GET"
+      ? await getSession(request.headers.authorization, process.env)
+      : await updateShopName(request.headers.authorization, await readJson(request), process.env);
     response.setHeader("Cache-Control", "no-store");
     response.writeHead(result.status);
     response.end(JSON.stringify(result.body));
@@ -117,15 +135,6 @@ const server = createServer(async (request, response) => {
       response.end(result.binary);
     } else {
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-  if ((request.method === 'POST' && (request.url === '/api/extractions' || /^\/api\/extractions\/[0-9a-f-]{36}\/retry$/i.test(request.url))) ||
-      (request.method === 'GET' && /^\/api\/uploads\/[0-9a-f-]{36}\/source$/i.test(request.url))) {
-    const result = await handleExtraction(request);
-    response.setHeader('Cache-Control', 'no-store');
-    if (result.binary) {
-      response.setHeader('Content-Type', result.contentType);
-      response.writeHead(result.status);
-      response.end(result.binary);
-    } else {
       response.writeHead(result.status);
       response.end(JSON.stringify(result.body));
     }
@@ -149,8 +158,8 @@ const server = createServer(async (request, response) => {
   }
 
   if (
-    request.method === "POST" && (url.pathname === "/api/orders" || url.pathname === "/api/jobs/expire-uploads") ||
-    request.method === "DELETE" && /^\/api\/orders\/[0-9a-f-]{36}$/i.test(url.pathname)
+    url.pathname === "/api/orders" || url.pathname.startsWith("/api/orders/") ||
+    request.method === "POST" && url.pathname === "/api/jobs/expire-uploads"
   ) {
     const result = await handleOrders(request);
     if (result.status === 204) {

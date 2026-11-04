@@ -45,3 +45,19 @@ test("upstream failures never expose provider details", async () => {
   assert.equal(result.body.error.code, "INTERNAL_ERROR");
   assert.doesNotMatch(JSON.stringify(result.body), /private provider error/);
 });
+
+test("shop name update validates input and writes only the verified owner's profile", async () => {
+  const { updateShopName } = await import("./session.mjs");
+  const id = "11111111-1111-4111-8111-111111111111";
+  const env = { SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "public" };
+  const bad = await updateShopName("Bearer t", { shop_name: "  " }, env, async () => { throw new Error("no call"); });
+  assert.equal(bad.status, 400);
+  const seen = [];
+  const result = await updateShopName("Bearer t", { shop_name: " Mila's " }, env, async (url, options = {}) => {
+    seen.push(`${options.method ?? "GET"} ${url}`);
+    if (String(url).endsWith("/auth/v1/user")) return { ok: true, status: 200, json: async () => ({ id, email: "a@b.co" }) };
+    return { ok: true, status: 200, json: async () => [{ shop_name: JSON.parse(options.body).shop_name }] };
+  });
+  assert.deepEqual(result.body, { email: "a@b.co", shop_name: "Mila's" });
+  assert.match(seen[1], new RegExp(`^PATCH .*owner_id=eq.${id}`));
+});

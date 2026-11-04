@@ -1,10 +1,9 @@
 # MabiList web app
 
 Next.js 16 + Tailwind 4. This directory owns the frontend screens, local API types, and API
-adapter. The server lives in `../backend/`. Product routes from `../docs/sdd.md` §2 are not
-built yet, so screens still run on the local mock adapter. The real adapter will call backend
-HTTP routes for product data; frontend code does not import backend source or query product
-tables directly.
+adapter. The server lives in `../backend/`. Screens call the backend through same-origin `/api`
+routes (forwarded by `next.config.ts`); sign-in goes straight to Supabase Auth. Frontend code does
+not import backend source or query product tables directly.
 
 ## Commands
 
@@ -16,14 +15,22 @@ npm run build
 npm test         # Vitest
 ```
 
-Sign in with any email and a password of 8+ characters (mock rule). Shorter passwords show the
-error state.
+Create `web/.env.local` (ignored by Git) before `npm run dev`:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://elnytafhuuzkzzeyriov.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<the project's publishable key>
+# BACKEND_URL=http://127.0.0.1:3001   # default
+```
+
+Start the backend too (`cd ../backend && npm run dev`, with `backend/.env` filled from
+`.env.example`), then create an account on the sign-up screen.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `app/sign-in`, `app/sign-up` | Auth screens (mock session in localStorage) |
+| `app/sign-in`, `app/sign-up` | Auth screens (Supabase Auth; tokens in localStorage) |
 | `app/(app)/logbook` | Logbook: attention strip, drafts, filters, grouped orders |
 | `app/(app)/add` | Add order: upload / paste, reading, every result state |
 | `app/(app)/add/manual` | Enter order by hand |
@@ -35,7 +42,7 @@ error state.
 | `lib/stats.ts` | Totals maths, mirroring the SDD statistics function |
 | `lib/updates.ts` | Field-by-field changes an order-update draft proposes |
 | `lib/types.ts` | Shapes from `sdd.md` §4 — change the SDD first |
-| `lib/api/` | `index.ts` is the one mock/real switch; `mock.ts` is the stand-in |
+| `lib/api/` | `index.ts`: the only module that talks to the backend and Supabase Auth |
 | `../backend/` | Independent server workspace; no source imports across the boundary |
 
 ## Not built yet

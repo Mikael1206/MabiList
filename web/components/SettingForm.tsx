@@ -14,6 +14,7 @@ export function SettingForm({
   autoComplete,
   initial,
   save,
+  savedNote,
 }: {
   title: string;
   question: string;
@@ -22,6 +23,8 @@ export function SettingForm({
   autoComplete: string;
   initial: string;
   save: (value: string) => Promise<Session>;
+  /** Shown after a successful save. */
+  savedNote?: string;
 }) {
   const setSession = useSetSession();
   const [value, setValue] = useState(initial);
@@ -62,7 +65,10 @@ export function SettingForm({
               setSaved(false);
             }}
           />
-          <div aria-live="polite">{error && <ErrorNote>{error}</ErrorNote>}</div>
+          <div aria-live="polite">
+            {error && <ErrorNote>{error}</ErrorNote>}
+            {saved && savedNote && <p className="font-body text-base">{savedNote}</p>}
+          </div>
           <div>
             <button type="submit" disabled={busy || saved} className={btn.primary}>
               {busy ? "Saving…" : saved ? "Saved" : "Save changes"}

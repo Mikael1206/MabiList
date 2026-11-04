@@ -15,6 +15,7 @@ export default function AccountEmailPage() {
       autoComplete="email"
       initial={session?.email ?? ""}
       save={updateEmail}
+      savedNote="Check your new inbox and tap the link to finish the change."
     />
   );
 }

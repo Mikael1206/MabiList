@@ -7,7 +7,7 @@ export async function checkOcrAvailable() {
   try {
     const { stdout } = await run('tesseract', ['--list-langs']);
     const languages = stdout.split(/\s+/);
-    const missing = ['eng', 'fil'].filter((language) => !languages.includes(language));
+    const missing = ['eng', 'tgl'].filter((language) => !languages.includes(language));
     if (missing.length) throw new Error(`Tesseract language data missing: ${missing.join(', ')}`);
   } catch (error) {
     if (error.code === 'ENOENT') throw new Error('Tesseract OCR is not installed or not on PATH');
@@ -16,7 +16,7 @@ export async function checkOcrAvailable() {
 }
 
 export async function readScreenshot(path) {
-  const { stdout } = await run('tesseract', [path, 'stdout', '--psm', '6', '-l', 'eng+fil'], { maxBuffer: 1024 * 1024 });
+  const { stdout } = await run('tesseract', [path, 'stdout', '--psm', '6', '-l', 'eng+tgl'], { maxBuffer: 1024 * 1024 });
   const text = stdout.replace(/^\s*Synthetic order chat\s*/i, '').trim();
   if (!text) throw new Error('OCR returned no chat text');
   return text;
@@ -24,8 +24,8 @@ export async function readScreenshot(path) {
 
 export async function readScreenshotBytes(bytes) {
   return new Promise((resolve, reject) => {
-    const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+fil']);
-    const child = spawn('tesseract', ['stdin', 'stdout', '--psm', '6', '-l', 'eng+tgl']);
+    // Windows installers don't add Tesseract to PATH; TESSERACT_LANGS lets a machine without tgl data still run.
+    const child = spawn(process.env.TESSERACT_PATH || 'tesseract', ['stdin', 'stdout', '--psm', '6', '-l', process.env.TESSERACT_LANGS || 'eng+tgl']);
     let output = '';
     let errors = '';
     child.stdout.setEncoding('utf8');

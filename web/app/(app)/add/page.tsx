@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type ChangeEvent } from "react";
 import { AppHeader, PageTitle, StatePanel, btn } from "@/components/ui";
-import { SHOW_DEV_TOOLS, createExtraction, type SimulatedOutcome } from "@/lib/api";
+import { ApiError, createExtraction } from "@/lib/api";
 import { shortDate } from "@/lib/format";
 import type { ExtractionInput, Order } from "@/lib/types";
 
 const MAX_FILES = 5; // [proposed] limit from design-brief §2 and the Figma "upload limits" frame
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_TYPES = ["image/png"]; // the extraction route reads PNG screenshots only
 
 type View =
   | { kind: "choose" }
@@ -28,22 +28,20 @@ export default function AddOrderPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<View>({ kind: "choose" });
   const [text, setText] = useState("");
-  const [showSamples, setShowSamples] = useState(false);
 
   // Cache Components keeps this page alive (hidden) after navigating away, so without this the
   // next visit would reopen on "Reading the chat…" or an old result with no way to upload again.
   useLayoutEffect(
     () => () => {
       setView({ kind: "choose" });
-      setShowSamples(false);
     },
     [],
   );
 
-  async function read(input: ExtractionInput, simulate?: SimulatedOutcome) {
+  async function read(input: ExtractionInput) {
     setView({ kind: "reading" });
     try {
-      const result = await createExtraction(input, simulate);
+      const result = await createExtraction(input);
       if (result.status === "draft_ready") {
         if (result.drafts.length === 1) router.push(`/orders/${result.drafts[0].id}`);
         else setView({ kind: "several", drafts: result.drafts });
@@ -52,8 +50,9 @@ export default function AddOrderPage() {
       } else {
         setView({ kind: result.status });
       }
-    } catch {
-      setView({ kind: "failed", reason: "We couldn’t reach MabiList. Check your connection.", input });
+    } catch (err) {
+      const reason = err instanceof ApiError ? err.message : "We couldn’t reach MabiList. Check your connection.";
+      setView({ kind: "failed", reason, input });
     }
   }
 
@@ -69,10 +68,6 @@ export default function AddOrderPage() {
   }
 
   const pickFiles = () => fileInput.current?.click();
-  const sample = (outcome: SimulatedOutcome | "limits" | "interrupted") => {
-    if (outcome === "limits" || outcome === "interrupted") setView({ kind: outcome });
-    else read({ kind: "text", text: "Pwede po ba 2 brownies, sa Wed po sana. Magkano po?" }, outcome);
-  };
 
   return (
     <>
@@ -98,36 +93,6 @@ export default function AddOrderPage() {
                 <ChoiceRow icon="/icons/paste.svg" title="Paste chat text" note="Copy the customer’s messages here" onClick={() => setView({ kind: "paste" })} />
               </li>
             </ul>
-            {SHOW_DEV_TOOLS && (
-              <>
-                <button type="button" onClick={() => setShowSamples((s) => !s)} aria-expanded={showSamples} className={`${btn.link} min-h-11`}>
-                  {showSamples ? "Hide" : "View"} sample input states
-                </button>
-                {showSamples && (
-                  <div className="grid grid-cols-2 gap-2 pt-[6px]">
-                    {(
-                      [
-                        ["unreadable", "Unreadable chat"],
-                        ["no_order", "No order found"],
-                        ["limits", "Upload limits"],
-                        ["interrupted", "Interrupted reading"],
-                        ["several", "Several orders found"],
-                        ["failed", "Reading failed"],
-                      ] as const
-                    ).map(([id, label]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => sample(id)}
-                        className="min-h-11 rounded-lg border-[1.25px] border-line p-2 font-display text-[13px] font-semibold"
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
           </>
         )}
 
@@ -206,7 +171,7 @@ export default function AddOrderPage() {
         )}
 
         {view.kind === "limits" && (
-          <StatePanel showLogo={false} title="That upload can’t be used" body={`Choose up to ${MAX_FILES} JPG, PNG or WebP screenshots from one conversation.`}>
+          <StatePanel showLogo={false} title="That upload can’t be used" body={`Choose up to ${MAX_FILES} PNG screenshots from one conversation.`}>
             <button type="button" onClick={pickFiles} className={btn.primary}>
               Choose different screenshots
             </button>

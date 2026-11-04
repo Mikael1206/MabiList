@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { AppHeader, ErrorNote, Eyebrow, SampleBadge, btn } from "@/components/ui";
-import { IS_MOCK, SHOW_DEV_TOOLS, getStats } from "@/lib/api";
-import { addDays, longDate, peso, shortDate, todayManila } from "@/lib/format";
+import { AppHeader, ErrorNote, Eyebrow, btn } from "@/components/ui";
+import { SHOW_DEV_TOOLS, getStats } from "@/lib/api";
+import { addDays, peso, shortDate, todayManila } from "@/lib/format";
 import type { Stats } from "@/lib/types";
 
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -46,7 +46,6 @@ export default function TotalsPage() {
     <>
       <AppHeader title="Totals" />
       <main className="px-4 pb-12 pt-7">
-        {IS_MOCK && <SampleBadge date={longDate(today)} />}
         <div className="pt-[14px]">
           <Eyebrow>Confirmed orders with prices</Eyebrow>
           <h2 className="pb-6 pt-2 font-display text-[29px] leading-[30.73px] tracking-[-1.16px]">Your shop at a glance</h2>
@@ -106,7 +105,7 @@ export default function TotalsPage() {
               )}
               {SHOW_DEV_TOOLS && (
                 <button type="button" onClick={() => setPreviewEmpty((p) => !p)} className={`${btn.link} mt-2 min-h-11`}>
-                  {previewEmpty ? "Show sample totals" : "Preview a period with no sales"}
+                  {previewEmpty ? "Show real totals" : "Preview a period with no sales"}
                 </button>
               )}
             </Block>
