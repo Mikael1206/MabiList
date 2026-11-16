@@ -27,7 +27,7 @@ A running sales logbook built from chats: it turns each Messenger or Instagram c
   <a href="docs/sdd.md">System design</a>
 </p>
 
-> 🏆 **NCR Regional Finalist, Philippine Startup Challenge XI.** MabiList is one of the **top 15 out of 108 participants** in the NCR regional round.
+> 🏆 ** NCR Regional Finalist, Philippine Startup Challenge XI.** MabiList is one of the **top 15 out of 108 participants** in the NCR regional round.
 >
 > **Built by team The Followers of Ultron.** MabiList is at the **Ideation** stage. The web app, the backend and the database are real and tested; AI chat reading is still being measured and runs on **synthetic chats only** (see [Honest status](#honest-status)).
 
